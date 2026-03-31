@@ -1,0 +1,24 @@
+name: Pierrevert COG Generator
+on:
+  push:
+    paths: ['data/pv_stack_final.tif']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GDAL
+        run: sudo apt-get install gdal-bin
+      - name: Convert to COG
+        run: |
+          gdal_translate data/pv_stack_final.tif data/pierrevert_cog.tif \
+          -co TILED=YES \
+          -co COPY_SRC_OVERVIEWS=YES \
+          -co COMPRESS=DEFLATE
+      - name: Push Back
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/pierrevert_cog.tif
+          git commit -m "Auto-generated COG" || exit 0
+          git push
