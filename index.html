@@ -3,39 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Debug</title>
+    <title>Pierrevert | Terroir Intelligence</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --gold: #d4af37; --bg: #050505; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); overflow: hidden; }
+        :root { --gold: #d4af37; --bg: #050505; --log: #00ff00; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, sans-serif; overflow: hidden; }
         
-        /* THE LOG: This replaces the console for iPhone testing */
-        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 60px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 10px; padding: 5px; overflow-y: scroll; z-index: 5000; border: 1px solid #333; pointer-events: none; }
+        /* Debug Log (Top) */
+        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 70px; background: rgba(0,0,0,0.9); color: var(--log); font-family: monospace; font-size: 10px; padding: 8px; overflow-y: scroll; z-index: 5000; border: 1px solid #333; pointer-events: none; border-radius: 4px; }
         
-        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050505; z-index: 4000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; transition: 0.5s; }
-        #start-btn { background: var(--gold); border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; display: none; }
+        /* Splash Screen */
+        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050505; z-index: 4000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; transition: 0.6s cubic-bezier(0.4, 0, 0.2, 1); text-align: center; }
+        #splash h1 { color: var(--gold); letter-spacing: 2px; margin: 0; }
+        #start-btn { background: var(--gold); border: none; padding: 16px 40px; font-weight: bold; cursor: pointer; display: none; margin-top: 20px; text-transform: uppercase; border-radius: 2px; }
         
-        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 5px; border-radius: 4px; border: 1px solid #333; width: 90%; }
-        .tab { flex: 1; text-align: center; padding: 12px; color: #777; font-size: 11px; text-transform: uppercase; }
-        .tab.active { color: var(--gold); font-weight: bold; }
+        /* UI Tabs */
+        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 4px; border-radius: 4px; border: 1px solid #333; width: 90%; max-width: 400px; backdrop-filter: blur(10px); }
+        .tab { flex: 1; text-align: center; padding: 12px; color: #666; cursor: pointer; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
+        .tab.active { color: var(--gold); }
     </style>
 </head>
 <body>
 
-    <div id="log">SYSTEM LOG: Initializing...</div>
+    <div id="log">SYSTEM: Initializing Mobile GIS...</div>
     
     <div id="splash">
-        <h1 style="color:var(--gold)">PIERREVERT</h1>
-        <p id="splash-status">LOADING DATA...</p>
-        <button id="start-btn" onclick="dismissSplash()">START</button>
+        <h1>PIERREVERT</h1>
+        <p id="splash-status" style="color:#666; font-size: 0.8rem; margin-top: 10px;">CONNECTING TO DATASET...</p>
+        <button id="start-btn" onclick="dismissSplash()">Explore Dashboard</button>
     </div>
 
     <div id="map"></div>
 
     <div class="tabs">
-        <div class="tab active" onclick="render(0, this)">Vigor</div>
-        <div class="tab" onclick="render(1, this)">Soil</div>
-        <div class="tab" onclick="render(2, this)">Terrain</div>
+        <div class="tab active" onclick="switchBand(0, this)">Vigor</div>
+        <div class="tab" onclick="switchBand(1, this)">Soil</div>
+        <div class="tab" onclick="switchBand(2, this)">Terrain</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -44,51 +47,60 @@
     <script src="https://unpkg.com/chroma-js"></script>
 
     <script>
-        function log(msg) {
+        // Log Helper for iPhone Debugging
+        function logger(msg) {
             const l = document.getElementById('log');
             l.innerHTML += "<br>> " + msg;
             l.scrollTop = l.scrollHeight;
         }
 
-        const map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
         let geoLayer;
         let activeGeoraster = null;
-        const cogUrl = "data/pierrevert_cog.tif";
+        
+        // Cache-busting URL to force the latest 4MB TIF
+        const cogUrl = "data/pierrevert_cog.tif?cb=" + Date.now();
 
         function dismissSplash() {
-            log("Dismissing splash screen...");
-            document.getElementById('splash').style.opacity = '0';
-            // CRITICAL: We move it out of the way so it doesn't block taps
+            logger("Unlocking Interface...");
+            const s = document.getElementById('splash');
+            s.style.opacity = '0';
             setTimeout(() => { 
-                document.getElementById('splash').style.display = 'none'; 
-                log("Splash removed. Map interaction enabled.");
-            }, 500);
+                s.style.display = 'none'; 
+                logger("Ready for interaction.");
+            }, 600);
         }
 
         async function init() {
-            log("Fetching COG...");
+            logger("Requesting TIF from GitHub...");
             try {
                 const response = await fetch(cogUrl);
-                if (!response.ok) throw new Error("File not found on GitHub");
+                if (!response.ok) throw new Error("File not found. Check GitHub Actions.");
                 
                 const buffer = await response.arrayBuffer();
-                log("Parsing Georaster (" + buffer.byteLength + " bytes)...");
+                logger("Parsing " + (buffer.byteLength / 1024 / 1024).toFixed(1) + "MB Stack...");
+                
                 activeGeoraster = await parseGeoraster(buffer);
                 
-                log("Georaster Ready. Bounds: " + activeGeoraster.xmin.toFixed(2));
+                // METADATA VALIDATION
+                logger("CRS: " + activeGeoraster.projection);
+                logger("Xmin: " + activeGeoraster.xmin.toFixed(0)); // Should be ~635000 (Meters)
+                
                 document.getElementById('splash-status').innerText = "ENGINE READY";
                 document.getElementById('start-btn').style.display = 'block';
-                render(0, document.querySelector('.tab'));
+                
+                render(0);
             } catch (e) {
-                log("ERROR: " + e.message);
+                logger("FATAL ERROR: " + e.message);
+                document.getElementById('splash-status').innerText = "ERROR: SEE LOG";
             }
         }
 
-        function render(band, el) {
+        function render(band) {
             if (!activeGeoraster) return;
-            log("Rendering Band " + band);
+            logger("Rendering Band: " + band);
             
             if (geoLayer) map.removeLayer(geoLayer);
             
@@ -98,6 +110,8 @@
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (v === 0 || isNaN(v) || v < -1) return null;
+                    
+                    // Scientific Color Ramps
                     if (band === 0) return chroma.scale(['#222', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 1) return chroma.scale(['#111', '#d4af37', '#ffffff']).domain([0, 0.2])(v).hex();
                     if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
@@ -107,34 +121,45 @@
             geoLayer.addTo(map);
         }
 
-        // IMPROVED TAP HANDLER
-        map.on('mousedown click', (e) => {
-            log("Tap detected at: " + e.latlng.lat.toFixed(4));
+        function switchBand(band, el) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            render(band);
+        }
+
+        // THE COORDINATE TRUTH HANDLER
+        map.on('click', (e) => {
+            logger("Tap detected at: " + e.latlng.lat.toFixed(4));
             
             if (!activeGeoraster) {
-                log("Tap ignored: Data not ready.");
+                logger("Wait for download...");
                 return;
             }
 
             try {
-                const x = Math.floor((e.latlng.lng - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
-                const y = Math.floor((activeGeoraster.ymax - e.latlng.lat) / activeGeoraster.pixelHeight);
+                // Convert Lat/Lng to Web Mercator Meters (EPSG:3857)
+                const point = L.Projection.SphericalMercator.project(e.latlng);
+                logger("Map Point (M): " + point.x.toFixed(0));
+
+                // Match against Georaster Bounds
+                const x = Math.floor((point.x - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
+                const y = Math.floor((activeGeoraster.ymax - point.y) / activeGeoraster.pixelHeight);
                 
-                log("Pixel Coords: X=" + x + " Y=" + y);
+                const vigor = activeGeoraster.values[0][y][x];
+                const soil = activeGeoraster.values[1][y][x];
+                const slope = activeGeoraster.values[2][y][x];
                 
-                const v = activeGeoraster.values.map(b => b[y] ? b[y][x] : null);
-                
-                if (v[0] !== null) {
-                    log("VALUE FOUND: " + v[0].toFixed(3));
+                if (vigor !== undefined) {
+                    logger("SUCCESS: V=" + vigor.toFixed(3));
                     L.popup()
                         .setLatLng(e.latlng)
-                        .setContent(`V: ${v[0].toFixed(3)}<br>S: ${v[1].toFixed(3)}<br>T: ${v[2].toFixed(1)}°`)
+                        .setContent(`<b>Vigor:</b> ${vigor.toFixed(3)}<br><b>Soil:</b> ${soil.toFixed(3)}<br><b>Slope:</b> ${slope.toFixed(1)}°`)
                         .openOn(map);
                 } else {
-                    log("Pixel is Empty (NoData)");
+                    logger("OUT OF BOUNDS: Tap nearer the AOC center.");
                 }
             } catch (err) {
-                log("Logic Error: " + err.message);
+                logger("MATH ERROR: " + err.message);
             }
         });
 
