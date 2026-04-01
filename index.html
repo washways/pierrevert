@@ -3,41 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha</title>
+    <title>Pierrevert | Visual Force</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --gold: #d4af37; --bg: #050505; --log: #00ff00; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, sans-serif; overflow: hidden; }
-        
-        /* Debug Log */
-        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 80px; background: rgba(0,0,0,0.9); color: var(--log); font-family: monospace; font-size: 10px; padding: 8px; overflow-y: scroll; z-index: 5000; border: 1px solid #333; pointer-events: none; border-radius: 4px; }
-        
-        /* Splash Screen */
-        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050505; z-index: 4000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; transition: 0.6s; text-align: center; }
-        #start-btn { background: var(--gold); border: none; padding: 16px 40px; font-weight: bold; cursor: pointer; display: none; margin-top: 20px; text-transform: uppercase; }
-        
-        /* UI Tabs */
-        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 4px; border-radius: 4px; border: 1px solid #333; width: 90%; max-width: 400px; }
-        .tab { flex: 1; text-align: center; padding: 12px; color: #666; cursor: pointer; font-size: 11px; text-transform: uppercase; font-weight: 600; }
-        .tab.active { color: var(--gold); }
+        :root { --gold: #d4af37; --bg: #050505; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); overflow: hidden; }
+        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 70px; background: rgba(0,0,0,0.95); color: #0f0; font-family: monospace; font-size: 10px; padding: 8px; z-index: 5000; border: 1px solid #333; pointer-events: none; }
+        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 5px; width: 90%; max-width: 400px; border: 1px solid #444; }
+        .tab { flex: 1; text-align: center; padding: 12px; color: #666; cursor: pointer; font-size: 11px; text-transform: uppercase; }
+        .tab.active { color: var(--gold); font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="log">SYSTEM: Booting Pierrevert Portal...</div>
-    
-    <div id="splash">
-        <h1 style="color:var(--gold)">PIERREVERT</h1>
-        <p id="splash-status" style="color:#666; font-size: 0.8rem; margin-top: 10px;">LOADING SCIENTIFIC STACK...</p>
-        <button id="start-btn" onclick="dismissSplash()">Explore Dashboard</button>
-    </div>
-
+    <div id="log">SYSTEM: Forcing Visual Overlay...</div>
     <div id="map"></div>
 
     <div class="tabs">
-        <div class="tab active" onclick="switchBand(0, this)">Vigor</div>
-        <div class="tab" onclick="switchBand(1, this)">Soil</div>
-        <div class="tab" onclick="switchBand(2, this)">Terrain</div>
+        <div class="tab active" onclick="render(0, this)">Vigor</div>
+        <div class="tab" onclick="render(1, this)">Soil</div>
+        <div class="tab" onclick="render(2, this)">Terrain</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -52,104 +37,72 @@
             l.scrollTop = l.scrollHeight;
         }
 
-        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
+        const map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
+        
+        // Base Map (Dark)
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
         let geoLayer;
         let activeGeoraster = null;
-        const cogUrl = "data/pierrevert_cog.tif?cb=" + Date.now();
-
-        function dismissSplash() {
-            document.getElementById('splash').style.opacity = '0';
-            setTimeout(() => { document.getElementById('splash').style.display = 'none'; }, 600);
-        }
+        const cogUrl = "data/pierrevert_cog.tif";
 
         async function init() {
-            logger("Requesting TIF...");
             try {
                 const response = await fetch(cogUrl);
-                if (!response.ok) throw new Error("404: TIF missing from /data/");
-                
                 const buffer = await response.arrayBuffer();
-                logger("Success. Parsing Buffer...");
-                
                 activeGeoraster = await parseGeoraster(buffer);
                 
-                // METADATA CHECK
-                logger("BANDS: " + activeGeoraster.numberOfBands);
-                logger("CRS: " + activeGeoraster.projection);
-                logger("XMIN: " + activeGeoraster.xmin.toFixed(0));
+                logger("DATA BOUNDS: " + activeGeoraster.xmin.toFixed(0));
                 
-                document.getElementById('splash-status').innerText = "ENGINE READY";
-                document.getElementById('start-btn').style.display = 'block';
+                // DRAW A RED BOX around the data area to prove location
+                const southWest = L.Projection.SphericalMercator.unproject({x: activeGeoraster.xmin, y: activeGeoraster.ymin});
+                const northEast = L.Projection.SphericalMercator.unproject({x: activeGeoraster.xmax, y: activeGeoraster.ymax});
+                L.rectangle([southWest, northEast], {color: "#ff0000", weight: 2, fill: false}).addTo(map);
                 
-                render(0);
+                logger("Red bounding box added to map.");
+                render(0, document.querySelector('.tab'));
             } catch (e) {
-                logger("FATAL: " + e.message);
+                logger("ERR: " + e.message);
             }
         }
 
-        function render(band) {
+        function render(band, el) {
             if (!activeGeoraster) return;
-            logger("Swapping to Band " + band);
-            
             if (geoLayer) map.removeLayer(geoLayer);
             
+            logger("Drawing Band " + band + "...");
+
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeoraster,
-                opacity: 0.8,
+                opacity: 0.9,
+                // CRITICAL: Lower resolution (64) uses much less iPhone memory
+                resolution: 64, 
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
+                    if (v === null || isNaN(v) || v === 0) return null;
                     
-                    // NAN PROTECTION: If data is broken, skip pixel instead of crashing map
-                    if (v === null || isNaN(v) || v === 0 || v < -100) return null;
-                    
-                    try {
-                        if (band === 0) { // Vigor
-                            const s = (v - 0.05) / 0.2; 
-                            return chroma.scale(['#222', '#d4af37', '#27ae60']).domain([0, 1])(s).hex();
-                        }
-                        if (band === 1) { // Soil
-                            const s = v / 0.2;
-                            return chroma.scale(['#111', '#d4af37', '#ffffff']).domain([0, 1])(s).hex();
-                        }
-                        if (band === 2) { // Slope
-                            const s = v / 25;
-                            return chroma.scale(['#111', '#ff4444']).domain([0, 1])(s).hex();
-                        }
-                    } catch (err) { return null; }
-                },
-                resolution: 128
+                    // NEON MODE: High contrast to ensure visibility
+                    if (band === 0) return chroma.scale(['black', '#00ff00']).domain([0.05, 0.25])(v).hex();
+                    if (band === 1) return chroma.scale(['black', '#ffff00']).domain([0, 0.2])(v).hex();
+                    if (band === 2) return chroma.scale(['black', '#00ffff']).domain([0, 25])(v).hex();
+                }
             });
-            geoLayer.addTo(map);
-        }
 
-        function switchBand(band, el) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            el.classList.add('active');
-            render(band);
+            geoLayer.addTo(map);
+            logger("Layer added to map pane.");
         }
 
         map.on('click', (e) => {
             if (!activeGeoraster) return;
-            
-            // Transform tap to EPSG:3857 Meters
-            const point = L.Projection.SphericalMercator.project(e.latlng);
-            const x = Math.floor((point.x - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
-            const y = Math.floor((activeGeoraster.ymax - point.y) / activeGeoraster.pixelHeight);
+            const p = L.Projection.SphericalMercator.project(e.latlng);
+            const x = Math.floor((p.x - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
+            const y = Math.floor((activeGeoraster.ymax - p.y) / activeGeoraster.pixelHeight);
             
             try {
-                const v = activeGeoraster.values[0][y][x];
-                const s = activeGeoraster.values[1][y][x];
-                const t = activeGeoraster.values[2][y][x];
-                
-                logger(`PROBE: V=${v?.toFixed(3)} | S=${s?.toFixed(3)} | T=${t?.toFixed(1)}`);
-                
-                L.popup()
-                    .setLatLng(e.latlng)
-                    .setContent(`Vigor: ${v?.toFixed(3)}<br>Soil: ${s?.toFixed(3)}<br>Slope: ${t?.toFixed(1)}°`)
-                    .openOn(map);
-            } catch (err) { logger("Probe failed: Outside bounds."); }
+                const val = activeGeoraster.values[0][y][x];
+                logger("TAP VALUE: " + val.toFixed(3));
+                L.popup().setLatLng(e.latlng).setContent("Value: " + val.toFixed(3)).openOn(map);
+            } catch (err) { logger("Tap outside bounds."); }
         });
 
         init();
