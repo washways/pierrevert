@@ -1,61 +1,141 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert Analytics</title>
+    <title>Pierrevert Terroir Intelligence</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: #000; }
+        :root { --gold: #d4af37; --bg: #050505; --panel: rgba(15, 15, 15, 0.85); }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: -apple-system, system-ui, sans-serif; overflow: hidden; }
+
+        /* Professional Splash Screen */
+        #splash {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a1a1a 0%, #050505 100%);
+            z-index: 3000; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; color: white; padding: 40px; text-align: center;
+            transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #splash h1 { color: var(--gold); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; font-size: 1.6rem; }
+        #splash .sub { color: #888; font-size: 0.8rem; margin-bottom: 25px; letter-spacing: 1px; }
+        #splash p { line-height: 1.6; max-width: 350px; font-size: 0.9rem; color: #bbb; margin-bottom: 30px; }
+        
+        .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 320px; margin-bottom: 30px; }
+        .f-item { border: 1px solid #333; padding: 12px; border-radius: 4px; font-size: 0.75rem; background: rgba(255,255,255,0.03); }
+        .f-item b { color: var(--gold); display: block; margin-bottom: 4px; }
+
+        #start-btn { 
+            background: var(--gold); color: black; border: none; padding: 16px 50px; 
+            border-radius: 2px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        /* Floating UI Components */
         .tabs {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; display: flex; background: rgba(0,0,0,0.85);
-            padding: 5px; border-radius: 50px; border: 1px solid #d4af37;
+            z-index: 1000; display: flex; background: var(--panel);
+            padding: 4px; border-radius: 4px; border: 1px solid #333;
+            backdrop-filter: blur(15px); width: 90%; max-width: 400px;
         }
         .tab {
-            padding: 10px 20px; color: #fff; cursor: pointer; font-size: 14px;
-            border-radius: 40px; transition: 0.2s; white-space: nowrap;
+            flex: 1; text-align: center; padding: 12px 0; color: #777; 
+            cursor: pointer; font-size: 11px; text-transform: uppercase; 
+            letter-spacing: 1px; transition: 0.3s;
         }
-        .tab.active { background: #d4af37; color: #000; font-weight: bold; }
+        .tab.active { color: var(--gold); font-weight: bold; }
+
+        #legend {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: var(--panel); padding: 12px; border-radius: 2px;
+            color: #eee; font-size: 0.7rem; border-left: 2px solid var(--gold);
+            backdrop-filter: blur(10px); pointer-events: none;
+        }
     </style>
 </head>
 <body>
-    <div id="map"></div>
-    <div class="tabs">
-        <div class="tab active" onclick="setLayer(0, this)">Vigor</div>
-        <div class="tab" onclick="setLayer(1, this)">Soil</div>
-        <div class="tab" onclick="setLayer(2, this)">Slope</div>
+
+    <div id="splash">
+        <h1>Pierrevert</h1>
+        <div class="sub">Terroir Intelligence Portal</div>
+        <p>Satellite-derived analytics for precision viticulture and hydrogeological assessment within the AOC Pierrevert.</p>
+        
+        <div class="feature-grid">
+            <div class="f-item"><b>Vegetation</b>Red-Edge NDRE</div>
+            <div class="f-item"><b>Mineralogy</b>Bare Soil Index</div>
+            <div class="f-item"><b>Terrain</b>Copernicus GLO-30</div>
+            <div class="f-item"><b>Resolution</b>10m Spatial</div>
+        </div>
+        
+        <button id="start-btn" onclick="dismissSplash()">Enter Dashboard</button>
     </div>
+
+    <div id="legend">MODELING: <span id="layer-name" style="color:var(--gold)">Photosynthetic Vigor</span></div>
+    
+    <div id="map"></div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="setLayer(0, this, 'Photosynthetic Vigor (NDRE)')">Vigor</div>
+        <div class="tab" onclick="setLayer(1, this, 'Mineralogical Profile (BSI)')">Soil</div>
+        <div class="tab" onclick="setLayer(2, this, 'Topographic Drainage')">Terrain</div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/georaster"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
     <script src="https://unpkg.com/chroma-js"></script>
+
     <script>
-        const map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 13);
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
         let geoLayer;
         const cogUrl = "data/pierrevert_cog.tif";
 
-        function setLayer(bandIndex, el) {
+        function dismissSplash() {
+            const s = document.getElementById('splash');
+            s.style.opacity = '0';
+            s.style.transform = 'scale(1.05)';
+            setTimeout(() => { s.style.display = 'none'; }, 600);
+        }
+
+        function setLayer(bandIndex, el, label) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
+            document.getElementById('layer-name').innerText = label;
+
             if (geoLayer) map.removeLayer(geoLayer);
+
             parseGeoraster(cogUrl).then(georaster => {
                 geoLayer = new GeoRasterLayer({
-                    georaster: georaster, opacity: 0.7,
+                    georaster: georaster,
+                    opacity: 0.75,
                     pixelValuesToColorFn: vals => {
                         const v = vals[bandIndex];
-                        if (v === 0 || isNaN(v)) return null;
-                        if (bandIndex === 0) return chroma.scale('YlGn')(v / 0.5).hex();
-                        if (bandIndex === 1) return chroma.scale(['#fff', '#d4af37', '#5d4037'])(v / 0.3).hex();
-                        if (bandIndex === 2) return chroma.scale('Reds')(v / 25).hex();
+                        if (v === 0 || isNaN(v) || v < -1) return null;
+
+                        // Internal calibration for regional reflectance values
+                        if (bandIndex === 0) {
+                            const s = (v - 0.05) / (0.25 - 0.05); 
+                            return chroma.scale(['#222', '#d4af37', '#27ae60']).domain([0, 1])(s).hex();
+                        }
+                        if (bandIndex === 1) {
+                            const s = (v - 0.0) / 0.20;
+                            return chroma.scale(['#111', '#d4af37', '#fdfefe']).domain([0, 1])(s).hex();
+                        }
+                        if (bandIndex === 2) {
+                            const s = v / 20;
+                            return chroma.scale(['#111', '#e74c3c']).domain([0, 1])(s).hex();
+                        }
                     },
-                    resolution: 64
+                    resolution: 128 
                 });
                 geoLayer.addTo(map);
             });
         }
-        setLayer(0, document.querySelector('.tab'));
+
+        // Initialize default view
+        setLayer(0, document.querySelector('.tab'), 'Photosynthetic Vigor (NDRE)');
     </script>
 </body>
 </html>
-    
