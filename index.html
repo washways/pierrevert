@@ -3,41 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert Terroir Intelligence</title>
+    <title>Pierrevert | System Debug</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root { --gold: #d4af37; --bg: #050505; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); overflow: hidden; }
         
-        /* Splash & Loader */
-        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, #1a1a1a, #050505); z-index: 3000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; text-align: center; padding: 40px; transition: 0.5s; }
-        #splash h1 { color: var(--gold); text-transform: uppercase; letter-spacing: 2px; margin: 0; }
-        #status-msg { margin: 20px 0; font-size: 0.8rem; color: #888; letter-spacing: 1px; }
-        #start-btn { background: var(--gold); border: none; padding: 16px 40px; font-weight: bold; cursor: pointer; display: none; text-transform: uppercase; }
-
-        /* Floating UI */
-        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: rgba(15,15,15,0.9); padding: 4px; border-radius: 4px; border: 1px solid #333; width: 90%; max-width: 400px; backdrop-filter: blur(10px); }
-        .tab { flex: 1; text-align: center; padding: 12px; color: #666; cursor: pointer; font-size: 11px; text-transform: uppercase; font-weight: 500; }
-        .tab.active { color: var(--gold); font-weight: 800; }
+        /* THE LOG: This replaces the console for iPhone testing */
+        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 60px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 10px; padding: 5px; overflow-y: scroll; z-index: 5000; border: 1px solid #333; pointer-events: none; }
         
-        #inspector { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 2000; background: rgba(0,0,0,0.8); color: var(--gold); padding: 8px 15px; border-radius: 20px; font-size: 10px; border: 1px solid #444; pointer-events: none; white-space: nowrap; }
+        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050505; z-index: 4000; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; transition: 0.5s; }
+        #start-btn { background: var(--gold); border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; display: none; }
+        
+        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 5px; border-radius: 4px; border: 1px solid #333; width: 90%; }
+        .tab { flex: 1; text-align: center; padding: 12px; color: #777; font-size: 11px; text-transform: uppercase; }
+        .tab.active { color: var(--gold); font-weight: bold; }
     </style>
 </head>
 <body>
 
+    <div id="log">SYSTEM LOG: Initializing...</div>
+    
     <div id="splash">
-        <h1>Pierrevert</h1>
-        <div id="status-msg">INITIALIZING GEOSPATIAL ENGINE...</div>
-        <button id="start-btn" onclick="dismissSplash()">Enter Dashboard</button>
+        <h1 style="color:var(--gold)">PIERREVERT</h1>
+        <p id="splash-status">LOADING DATA...</p>
+        <button id="start-btn" onclick="dismissSplash()">START</button>
     </div>
 
-    <div id="inspector">TAP TERRAIN TO PROBE VALUES</div>
     <div id="map"></div>
 
     <div class="tabs">
-        <div class="tab active" onclick="switchTab(0, this)">Vigor</div>
-        <div class="tab" onclick="switchTab(1, this)">Soil</div>
-        <div class="tab" onclick="switchTab(2, this)">Terrain</div>
+        <div class="tab active" onclick="render(0, this)">Vigor</div>
+        <div class="tab" onclick="render(1, this)">Soil</div>
+        <div class="tab" onclick="render(2, this)">Terrain</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -46,51 +44,60 @@
     <script src="https://unpkg.com/chroma-js"></script>
 
     <script>
-        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
+        function log(msg) {
+            const l = document.getElementById('log');
+            l.innerHTML += "<br>> " + msg;
+            l.scrollTop = l.scrollHeight;
+        }
+
+        const map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
         let geoLayer;
         let activeGeoraster = null;
-        let currentBand = 0;
+        const cogUrl = "data/pierrevert_cog.tif";
 
-        // Path Correction for washways.org/pierrevert
-        const baseUrl = window.location.href.split('?')[0].split('#')[0].replace('index.html', '');
-        const cogUrl = baseUrl + "data/pierrevert_cog.tif";
-
-        function dismissSplash() { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash').style.display='none', 500); }
+        function dismissSplash() {
+            log("Dismissing splash screen...");
+            document.getElementById('splash').style.opacity = '0';
+            // CRITICAL: We move it out of the way so it doesn't block taps
+            setTimeout(() => { 
+                document.getElementById('splash').style.display = 'none'; 
+                log("Splash removed. Map interaction enabled.");
+            }, 500);
+        }
 
         async function init() {
-            const msg = document.getElementById('status-msg');
+            log("Fetching COG...");
             try {
-                msg.innerText = "FETCHING REMOTE COG (16MB)...";
                 const response = await fetch(cogUrl);
-                if (!response.ok) throw new Error("COG NOT FOUND. Run GitHub Action.");
+                if (!response.ok) throw new Error("File not found on GitHub");
                 
                 const buffer = await response.arrayBuffer();
-                msg.innerText = "PARSING MULTI-BAND STACK...";
+                log("Parsing Georaster (" + buffer.byteLength + " bytes)...");
                 activeGeoraster = await parseGeoraster(buffer);
                 
-                msg.innerText = "ENGINE READY.";
+                log("Georaster Ready. Bounds: " + activeGeoraster.xmin.toFixed(2));
+                document.getElementById('splash-status').innerText = "ENGINE READY";
                 document.getElementById('start-btn').style.display = 'block';
-                render(0);
+                render(0, document.querySelector('.tab'));
             } catch (e) {
-                msg.innerText = "ERROR: " + e.message;
-                msg.style.color = "#e74c3c";
+                log("ERROR: " + e.message);
             }
         }
 
-        function render(band) {
-            currentBand = band;
+        function render(band, el) {
+            if (!activeGeoraster) return;
+            log("Rendering Band " + band);
+            
             if (geoLayer) map.removeLayer(geoLayer);
             
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeoraster,
-                opacity: 0.75,
+                opacity: 0.8,
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (v === 0 || isNaN(v) || v < -1) return null;
-                    
-                    // Pierrevert-Specific Calibration
                     if (band === 0) return chroma.scale(['#222', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 1) return chroma.scale(['#111', '#d4af37', '#ffffff']).domain([0, 0.2])(v).hex();
                     if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
@@ -100,21 +107,34 @@
             geoLayer.addTo(map);
         }
 
-        function switchTab(band, el) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            el.classList.add('active');
-            render(band);
-        }
-
-        map.on('click', e => {
-            if (!activeGeoraster) return;
-            const x = Math.floor((e.latlng.lng - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
-            const y = Math.floor((activeGeoraster.ymax - e.latlng.lat) / activeGeoraster.pixelHeight);
+        // IMPROVED TAP HANDLER
+        map.on('mousedown click', (e) => {
+            log("Tap detected at: " + e.latlng.lat.toFixed(4));
             
-            const v = activeGeoraster.values.map(b => b[y] ? b[y][x] : null);
-            if (v[0] !== null) {
-                document.getElementById('inspector').innerHTML = 
-                    `V: ${v[0].toFixed(3)} | S: ${v[1].toFixed(3)} | T: ${v[2].toFixed(1)}°`;
+            if (!activeGeoraster) {
+                log("Tap ignored: Data not ready.");
+                return;
+            }
+
+            try {
+                const x = Math.floor((e.latlng.lng - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
+                const y = Math.floor((activeGeoraster.ymax - e.latlng.lat) / activeGeoraster.pixelHeight);
+                
+                log("Pixel Coords: X=" + x + " Y=" + y);
+                
+                const v = activeGeoraster.values.map(b => b[y] ? b[y][x] : null);
+                
+                if (v[0] !== null) {
+                    log("VALUE FOUND: " + v[0].toFixed(3));
+                    L.popup()
+                        .setLatLng(e.latlng)
+                        .setContent(`V: ${v[0].toFixed(3)}<br>S: ${v[1].toFixed(3)}<br>T: ${v[2].toFixed(1)}°`)
+                        .openOn(map);
+                } else {
+                    log("Pixel is Empty (NoData)");
+                }
+            } catch (err) {
+                log("Logic Error: " + err.message);
             }
         });
 
