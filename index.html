@@ -3,26 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Visual Force</title>
+    <title>Pierrevert | System Alpha</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --gold: #d4af37; --bg: #050505; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); overflow: hidden; }
-        #log { position: absolute; top: 10px; right: 10px; left: 10px; height: 70px; background: rgba(0,0,0,0.95); color: #0f0; font-family: monospace; font-size: 10px; padding: 8px; z-index: 5000; border: 1px solid #333; pointer-events: none; }
-        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 5px; width: 90%; max-width: 400px; border: 1px solid #444; }
-        .tab { flex: 1; text-align: center; padding: 12px; color: #666; cursor: pointer; font-size: 11px; text-transform: uppercase; }
-        .tab.active { color: var(--gold); font-weight: bold; }
+        :root { --gold: #d4af37; --bg: #050505; --ui-panel: rgba(15, 15, 15, 0.95); }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 50px; background: var(--ui-panel); color: #0f0; font-family: monospace; font-size: 10px; padding: 8px; z-index: 5000; border: 1px solid #333; pointer-events: none; overflow: hidden; border-radius: 4px; }
+        
+        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 95%; max-width: 600px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--ui-panel); padding: 6px; border: 1px solid #444; border-radius: 8px; }
+        .tab { text-align: center; padding: 10px 2px; color: #777; cursor: pointer; font-size: 9px; text-transform: uppercase; font-weight: bold; border: 1px solid transparent; transition: 0.2s; }
+        .tab.active { color: var(--gold); border-bottom: 2px solid var(--gold); background: rgba(212, 175, 55, 0.05); }
+
+        .leaflet-popup-content-wrapper { background: var(--ui-panel); color: white; border: 1px solid var(--gold); border-radius: 4px; }
+        .leaflet-popup-tip { background: var(--gold); }
+        .stat-row { display: flex; justify-content: space-between; margin: 4px 0; border-bottom: 1px solid #333; padding-bottom: 2px; font-family: monospace; }
+        .stat-label { color: #aaa; font-size: 10px; }
+        .stat-val { color: var(--gold); font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="log">SYSTEM: Forcing Visual Overlay...</div>
+    <div id="log">SYSTEM: Booting Pierrevert 8-Band Intelligence...</div>
     <div id="map"></div>
 
-    <div class="tabs">
+    <div class="tabs-container">
         <div class="tab active" onclick="render(0, this)">Vigor</div>
         <div class="tab" onclick="render(1, this)">Soil</div>
-        <div class="tab" onclick="render(2, this)">Terrain</div>
+        <div class="tab" onclick="render(2, this)">Slope</div>
+        <div class="tab" onclick="render(3, this)">Water</div>
+        <div class="tab" onclick="render(4, this)">Clay</div>
+        <div class="tab" onclick="render(5, this)">Position</div>
+        <div class="tab" onclick="render(6, this)">Sun</div>
+        <div class="tab" onclick="render(7, this)">Thermal</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -31,78 +44,77 @@
     <script src="https://unpkg.com/chroma-js"></script>
 
     <script>
-        function logger(msg) {
-            const l = document.getElementById('log');
-            l.innerHTML += "<br>> " + msg;
-            l.scrollTop = l.scrollHeight;
-        }
-
-        const map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
+        const logger = (m) => { const l = document.getElementById('log'); l.innerHTML = `> ${m}<br>` + l.innerHTML; };
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
         
-        // Base Map (Dark)
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        let geoLayer;
-        let activeGeoraster = null;
-        const cogUrl = "data/pierrevert_cog.tif";
+        let geoLayer, activeGeo = null;
+        const cogUrl = "data/pierrevert_final.tif?v=" + Date.now();
 
         async function init() {
             try {
-                const response = await fetch(cogUrl);
-                const buffer = await response.arrayBuffer();
-                activeGeoraster = await parseGeoraster(buffer);
-                
-                logger("DATA BOUNDS: " + activeGeoraster.xmin.toFixed(0));
-                
-                // DRAW A RED BOX around the data area to prove location
-                const southWest = L.Projection.SphericalMercator.unproject({x: activeGeoraster.xmin, y: activeGeoraster.ymin});
-                const northEast = L.Projection.SphericalMercator.unproject({x: activeGeoraster.xmax, y: activeGeoraster.ymax});
-                L.rectangle([southWest, northEast], {color: "#ff0000", weight: 2, fill: false}).addTo(map);
-                
-                logger("Red bounding box added to map.");
+                const res = await fetch(cogUrl);
+                const buf = await res.arrayBuffer();
+                activeGeo = await parseGeoraster(buf);
+                logger(`LOADED: 8-Band Cube Rescaling 10m`);
                 render(0, document.querySelector('.tab'));
-            } catch (e) {
-                logger("ERR: " + e.message);
-            }
+            } catch (e) { logger("DATA ERROR: Check GitHub path"); }
         }
 
         function render(band, el) {
-            if (!activeGeoraster) return;
+            if (!activeGeo) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
             if (geoLayer) map.removeLayer(geoLayer);
-            
-            logger("Drawing Band " + band + "...");
 
             geoLayer = new GeoRasterLayer({
-                georaster: activeGeoraster,
-                opacity: 0.9,
-                // CRITICAL: Lower resolution (64) uses much less iPhone memory
-                resolution: 64, 
+                georaster: activeGeo,
+                opacity: 0.8,
+                resolution: 128,
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (v === null || isNaN(v) || v === 0) return null;
-                    
-                    // NEON MODE: High contrast to ensure visibility
-                    if (band === 0) return chroma.scale(['black', '#00ff00']).domain([0.05, 0.25])(v).hex();
-                    if (band === 1) return chroma.scale(['black', '#ffff00']).domain([0, 0.2])(v).hex();
-                    if (band === 2) return chroma.scale(['black', '#00ffff']).domain([0, 25])(v).hex();
+
+                    // Scientific Color Ramps
+                    if (band === 0) return chroma.scale(['#444', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex(); // NDRE
+                    if (band === 1) return chroma.scale(['#3d2b1f', '#d4af37', '#ffffff']).domain([0, 0.2])(v).hex();  // BSI
+                    if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();               // Slope
+                    if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex(); // NDMI
+                    if (band === 4) return chroma.scale(['#fdf5e6', '#8b4513']).domain([1.0, 2.2])(v).hex();        // Clay
+                    if (band === 5) return chroma.scale(['#2e8b57', '#ffffff', '#8b0000']).domain([-10, 10])(v).hex(); // TPI
+                    if (band === 6) return chroma.scale(['#2c3e50', '#f1c40f']).domain([-1, 1])(v).hex();           // Sun
+                    if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex(); // Thermal
                 }
             });
-
             geoLayer.addTo(map);
-            logger("Layer added to map pane.");
         }
 
         map.on('click', (e) => {
-            if (!activeGeoraster) return;
-            const p = L.Projection.SphericalMercator.project(e.latlng);
-            const x = Math.floor((p.x - activeGeoraster.xmin) / activeGeoraster.pixelWidth);
-            const y = Math.floor((activeGeoraster.ymax - p.y) / activeGeoraster.pixelHeight);
-            
+            if (!activeGeo) return;
+            const pt = L.Projection.SphericalMercator.project(e.latlng);
+            const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
+            const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
+
             try {
-                const val = activeGeoraster.values[0][y][x];
-                logger("TAP VALUE: " + val.toFixed(3));
-                L.popup().setLatLng(e.latlng).setContent("Value: " + val.toFixed(3)).openOn(map);
-            } catch (err) { logger("Tap outside bounds."); }
+                const vigor = activeGeo.values[0][y][x];
+                const water = activeGeo.values[3][y][x];
+                const clay = activeGeo.values[4][y][x];
+                const temp = activeGeo.values[7][y][x];
+
+                let status = (water < 0.05 && temp > 38) ? "HIGH STRESS" : "STABLE";
+                let color = status === "STABLE" ? "#0f0" : "#f00";
+
+                L.popup().setLatLng(e.latlng).setContent(`
+                    <div style="min-width:140px">
+                        <div style="text-align:center; color:${color}; font-weight:bold; font-size:12px; margin-bottom:8px">${status}</div>
+                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${vigor.toFixed(2)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${temp.toFixed(1)}°C</span></div>
+                        <div class="stat-row"><span class="stat-label">Moisture</span><span class="stat-val">${water.toFixed(2)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Clay</span><span class="stat-val">${clay.toFixed(2)}</span></div>
+                    </div>
+                `).openOn(map);
+            } catch (err) { logger("OFF-PARCEL TAP"); }
         });
 
         init();
