@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pierrevert | System Alpha</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    
     <style>
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.95); }
         body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: -apple-system, sans-serif; overflow: hidden; }
@@ -23,7 +25,7 @@
 </head>
 <body>
 
-    <div id="log">SYSTEM: Awaiting DOM...</div>
+    <div id="log">SYSTEM: Loading Core...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -37,10 +39,10 @@
         <div class="tab" onclick="render(7, this)">Thermal</div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/georaster"></script>
-    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
-    <script src="https://unpkg.com/chroma-js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
+    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
 
     <script>
         const logger = (m) => { 
@@ -50,36 +52,36 @@
         };
 
         let map, geoLayer, activeGeo = null;
-        const cogUrl = "data/pierrevert_final.tif";
+        const cogUrl = "data/pierrevert_final.tif?v=" + Date.now();
 
-        // SAFETY: Wait for full window load
         window.addEventListener('load', async () => {
-            logger("DOM READY. Checking libraries...");
+            logger("DOM READY. Validating Engine...");
 
-            // Check Dependencies
-            if (typeof L === 'undefined') return logger("FATAL: Leaflet failed.");
-            if (typeof parseGeoraster === 'undefined') return logger("FATAL: Georaster failed.");
-            if (typeof chroma === 'undefined') return logger("FATAL: Chroma failed.");
+            // Strict Dependency Check
+            if (typeof L === 'undefined') return logger("FATAL: Leaflet load failed.");
+            if (typeof chroma === 'undefined') return logger("FATAL: Chroma load failed.");
+            if (typeof parseGeoraster === 'undefined') return logger("FATAL: Georaster load failed.");
 
-            logger("LIBS OK. Initializing Map...");
+            logger("ENGINE VALIDATED. Initializing Map...");
             
             try {
                 map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-                logger("MAP READY. Requesting Data...");
+                
+                logger("MAP READY. Fetching 8-Band TIFF...");
 
                 const res = await fetch(cogUrl);
-                if (!res.ok) throw new Error(`HTTP ${res.status}: File not found at ${cogUrl}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: TIFF NOT FOUND at /data/`);
 
-                logger("FETCH OK. Parsing 8-Band Binary...");
+                logger("FETCH OK. Unpacking Binary...");
                 const buf = await res.arrayBuffer();
                 activeGeo = await parseGeoraster(buf);
                 
-                logger(`SUCCESS: ${(buf.byteLength/1048576).toFixed(1)}MB Loaded.`);
+                logger(`SUCCESS: ${(buf.byteLength/1048576).toFixed(1)}MB Online.`);
                 render(0, document.querySelector('.tab'));
 
             } catch (e) {
-                logger(`FATAL ERROR: ${e.message}`);
+                logger(`CRITICAL ERROR: ${e.message}`);
                 console.error(e);
             }
         });
@@ -90,56 +92,53 @@
             el.classList.add('active');
             if (geoLayer) map.removeLayer(geoLayer);
 
-            logger(`Drawing Band ${band}...`);
+            logger(`Layer: Band ${band} rendering...`);
 
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
                 opacity: 0.85,
-                resolution: 64, // Start low for stability
+                resolution: 64, 
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (v === null || isNaN(v) || v === 0) return null;
-                    switch(band) {
-                        case 0: return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
-                        case 1: return chroma.scale(['#3d2b1f', '#d4af37', '#fff']).domain([0, 0.2])(v).hex();
-                        case 2: return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
-                        case 3: return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
-                        case 4: return chroma.scale(['#fdf5e6', '#8b4513']).domain([1.0, 2.2])(v).hex();
-                        case 5: return chroma.scale(['#2e8b57', '#eee', '#8b0000']).domain([-10, 10])(v).hex();
-                        case 6: return chroma.scale(['#2c3e50', '#f1c40f']).domain([-1, 1])(v).hex();
-                        case 7: return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
-                    }
+                    
+                    try {
+                        switch(band) {
+                            case 0: return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
+                            case 1: return chroma.scale(['#3d2b1f', '#d4af37', '#fff']).domain([0, 0.2])(v).hex();
+                            case 2: return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
+                            case 3: return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
+                            case 4: return chroma.scale(['#fdf5e6', '#8b4513']).domain([1.0, 2.2])(v).hex();
+                            case 5: return chroma.scale(['#2e8b57', '#eee', '#8b0000']).domain([-10, 10])(v).hex();
+                            case 6: return chroma.scale(['#2c3e50', '#f1c40f']).domain([-1, 1])(v).hex();
+                            case 7: return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
+                        }
+                    } catch(e) { return null; }
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // Tap Probe Logic
-        window.onclick = (e) => {
-            if (!activeGeo || !map) return;
-            // Prevent popup when clicking buttons
-            if (e.target.classList.contains('tab')) return;
+        map.on('click', (ev) => {
+            if (!activeGeo) return;
+            const pt = L.Projection.SphericalMercator.project(ev.latlng);
+            const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
+            const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
 
-            map.on('click', (ev) => {
-                const pt = L.Projection.SphericalMercator.project(ev.latlng);
-                const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
-                const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
-
-                try {
-                    const v = activeGeo.values[0][y][x];
-                    const w = activeGeo.values[3][y][x];
-                    const t = activeGeo.values[7][y][x];
-                    
-                    L.popup().setLatLng(ev.latlng).setContent(`
-                        <div style="min-width:140px">
-                            <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v.toFixed(3)}</span></div>
-                            <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w.toFixed(2)}</span></div>
-                            <div class="stat-row"><span class="stat-label">Temp</span><span class="stat-val">${t.toFixed(1)}°C</span></div>
-                        </div>
-                    `).openOn(map);
-                } catch(err) {}
-            });
-        };
+            try {
+                const v = activeGeo.values[0][y][x];
+                const w = activeGeo.values[3][y][x];
+                const t = activeGeo.values[7][y][x];
+                
+                L.popup().setLatLng(ev.latlng).setContent(`
+                    <div style="min-width:140px">
+                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v.toFixed(3)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w.toFixed(2)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Temp</span><span class="stat-val">${t.toFixed(1)}°C</span></div>
+                    </div>
+                `).openOn(map);
+            } catch(err) {}
+        });
     </script>
 </body>
 </html>
