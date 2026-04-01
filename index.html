@@ -3,31 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Diagnostic Portal</title>
+    <title>Pierrevert | Logic Debugger</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root { --gold: #d4af37; --bg: #050505; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, sans-serif; overflow: hidden; }
-        
-        /* Floating Tabs */
-        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: rgba(15,15,15,0.9); padding: 5px; border-radius: 4px; border: 1px solid #333; width: 90%; max-width: 400px; }
-        .tab { flex: 1; text-align: center; padding: 12px; color: #777; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); overflow: hidden; }
+        #inspector { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 5000; background: rgba(212, 175, 55, 0.9); color: black; padding: 12px; border-radius: 4px; font-weight: bold; font-size: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .tabs { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; background: #111; padding: 5px; border-radius: 4px; border: 1px solid #333; width: 90%; }
+        .tab { flex: 1; text-align: center; padding: 12px; color: #777; font-size: 11px; text-transform: uppercase; }
         .tab.active { color: var(--gold); font-weight: bold; }
-        
-        /* Inspector HUD */
-        #inspector { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 2000; background: rgba(0,0,0,0.8); color: var(--gold); padding: 10px; border-radius: 4px; border: 1px solid #444; font-size: 11px; pointer-events: none; text-align: center; }
-        #inspector b { color: white; margin-right: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="inspector">Tap the map to inspect terrain values</div>
+    <div id="inspector">SYSTEM READY: Tap map to probe data</div>
     <div id="map"></div>
 
     <div class="tabs">
         <div class="tab active" onclick="setLayer(0, this)">Vigor</div>
         <div class="tab" onclick="setLayer(1, this)">Soil</div>
-        <div class="tab" onclick="setLayer(2, this)">Slope</div>
+        <div class="tab" onclick="setLayer(2, this)">Terrain</div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -40,25 +35,29 @@
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
         let geoLayer;
-        let globalGeoraster;
-        const cogUrl = "data/pierrevert_cog.tif";
+        let globalGeoraster = null;
+        
+        // CACHE BUSTING: Ensures your phone loads the LATEST version of the TIF
+        const cogUrl = "data/pierrevert_cog.tif?v=" + Math.random();
 
         function setLayer(bandIndex, el) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
             if (geoLayer) map.removeLayer(geoLayer);
 
+            document.getElementById('inspector').innerText = "FETCHING DATA...";
+
             parseGeoraster(cogUrl).then(georaster => {
-                globalGeoraster = georaster; // Store for the click handler
-                
+                console.log("Georaster loaded:", georaster);
+                globalGeoraster = georaster;
+                document.getElementById('inspector').innerText = "DATA LOADED. TAP TO INSPECT.";
+
                 geoLayer = new GeoRasterLayer({
                     georaster: georaster,
                     opacity: 0.8,
                     pixelValuesToColorFn: vals => {
                         const v = vals[bandIndex];
-                        if (v === 0 || isNaN(v) || v < -500) return null;
-
-                        // STRETCH LOGIC
+                        if (v === 0 || isNaN(v)) return null;
                         if (bandIndex === 0) return chroma.scale(['#222', '#d4af37', '#27ae60']).domain([0.05, 0.3])(v).hex();
                         if (bandIndex === 1) return chroma.scale(['#111', '#d4af37', '#ffffff']).domain([0, 0.25])(v).hex();
                         if (bandIndex === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 30])(v).hex();
@@ -66,35 +65,44 @@
                     resolution: 64
                 });
                 geoLayer.addTo(map);
+            }).catch(err => {
+                document.getElementById('inspector').innerText = "ERROR: " + err.message;
             });
         }
 
-        // THE VALUE INSPECTOR LOGIC
+        // IMPROVED TOUCH HANDLER
         map.on('click', function(e) {
-            if (!globalGeoraster) return;
-
-            const lat = e.latlng.lat;
-            const lng = e.latlng.lng;
+            // Immediate feedback to prove the 'tap' worked
+            console.log("Map clicked at", e.latlng);
             
-            // Query the COG for all 3 bands at this location
-            const results = globalGeoraster.values.map(band => {
-                // Find the pixel coordinates for this Lat/Lon
+            if (!globalGeoraster) {
+                alert("Wait! Data is still downloading from GitHub...");
+                return;
+            }
+
+            try {
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                
+                // Manual coordinate lookup
                 const x = Math.floor((lng - globalGeoraster.xmin) / globalGeoraster.pixelWidth);
                 const y = Math.floor((globalGeoraster.ymax - lat) / globalGeoraster.pixelHeight);
-                return band[y] ? band[y][x] : null;
-            });
+                
+                // Debug values in inspector
+                const val0 = globalGeoraster.values[0][y][x];
+                const val1 = globalGeoraster.values[1][y][x];
+                const val2 = globalGeoraster.values[2][y][x];
 
-            const vigor = results[0] ? results[0].toFixed(4) : "N/A";
-            const soil = results[1] ? results[1].toFixed(4) : "N/A";
-            const slope = results[2] ? results[2].toFixed(4) : "N/A";
-
-            document.getElementById('inspector').innerHTML = 
-                `<b>VIGOR:</b> ${vigor} | <b>SOIL:</b> ${soil} | <b>SLOPE:</b> ${slope}°`;
-            
-            L.popup()
-                .setLatLng(e.latlng)
-                .setContent(`V:${vigor}<br>S:${soil}<br>T:${slope}°`)
-                .openOn(map);
+                document.getElementById('inspector').innerHTML = 
+                    `V: ${val0.toFixed(3)} | S: ${val1.toFixed(3)} | T: ${val2.toFixed(1)}°`;
+                
+                L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent(`<b>Vigor:</b> ${val0.toFixed(3)}<br><b>Soil:</b> ${val1.toFixed(3)}<br><b>Slope:</b> ${val2.toFixed(1)}°`)
+                    .openOn(map);
+            } catch (err) {
+                document.getElementById('inspector').innerText = "Point outside data bounds.";
+            }
         });
 
         setLayer(0, document.querySelector('.tab'));
