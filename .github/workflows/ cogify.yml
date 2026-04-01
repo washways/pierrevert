@@ -1,32 +1,32 @@
 name: Pierrevert COG Generator
-on: [push] # This fires on ANY push to the repo
-
+on:
+  push:
+    paths: ['data/pv_stack_final.tif'] # Fires only when the raw data changes
 jobs:
-  build:
+  build-cog:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Essential for the 'Sync' step
+      contents: write
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install GIS Tools
+      - name: Install GDAL
         run: sudo apt-get install gdal-bin
         
-      - name: Convert TIF to COG
+      - name: Transform to True COG
         run: |
-          # Only run if the file exists
-          if [ -f "data/pv_stack_final.tif" ]; then
-            gdal_translate data/pv_stack_final.tif data/pierrevert_cog.tif \
-            -co TILED=YES -co COPY_SRC_OVERVIEWS=YES -co COMPRESS=DEFLATE
-          else
-            echo "File data/pv_stack_final.tif not found!"
-            exit 1
-          fi
+          # The -of COG flag is critical for mobile streaming
+          gdal_translate data/pv_stack_final.tif data/pierrevert_cog.tif \
+          -of COG \
+          -co COMPRESS=DEFLATE \
+          -co PREDICTOR=YES \
+          -co ADD_INTEL=YES
           
-      - name: Sync Back to Repo
+      - name: Sync Optimized Data
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/pierrevert_cog.tif
-          git commit -m "Auto-generated COG" || exit 0
+          git commit -m "Optimize: Flattened stripes to True COG" || exit 0
           git push
+
