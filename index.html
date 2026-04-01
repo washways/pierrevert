@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pierrevert | System Alpha</title>
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.95); }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: -apple-system, sans-serif; overflow: hidden; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 70px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; z-index: 9999; border: 1px solid #333; overflow-y: auto; border-radius: 4px; pointer-events: auto; }
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 75px; background: var(--ui); color: #0f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; overflow-y: auto; border-radius: 6px; pointer-events: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.8); }
         
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: var(--ui); padding: 8px; border: 1px solid #444; border-radius: 12px; }
         .tab { text-align: center; padding: 12px 2px; color: #666; cursor: pointer; font-size: 9px; text-transform: uppercase; font-weight: 800; border-radius: 4px; border: 1px solid transparent; }
@@ -25,7 +25,7 @@
 </head>
 <body>
 
-    <div id="log">SYSTEM: Loading Core...</div>
+    <div id="log">SYSTEM: Engine Start...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -39,52 +39,55 @@
         <div class="tab" onclick="render(7, this)">Thermal</div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
-    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
 
     <script>
+        // IMMEDIATE LOGGER
         const logger = (m) => { 
             const l = document.getElementById('log'); 
-            l.innerHTML = `> ${m}<br>` + l.innerHTML; 
-            console.log(m);
+            if (l) {
+                l.innerHTML = `> ${m}<br>` + l.innerHTML; 
+            }
+            console.log("SYSTEM:", m);
         };
 
         let map, geoLayer, activeGeo = null;
-        const cogUrl = "data/pierrevert_final.tif?v=" + Date.now();
+        const cogUrl = "data/pierrevert_final.tif?nocache=" + Date.now();
 
-        window.addEventListener('load', async () => {
-            logger("DOM READY. Validating Engine...");
+        async function startEngine() {
+            logger("Checking Libraries...");
+            
+            if (typeof L === 'undefined') return logger("ERR: Leaflet Missing");
+            if (typeof chroma === 'undefined') return logger("ERR: Chroma Missing");
+            if (typeof parseGeoraster === 'undefined') return logger("ERR: Georaster Missing");
 
-            // Strict Dependency Check
-            if (typeof L === 'undefined') return logger("FATAL: Leaflet load failed.");
-            if (typeof chroma === 'undefined') return logger("FATAL: Chroma load failed.");
-            if (typeof parseGeoraster === 'undefined') return logger("FATAL: Georaster load failed.");
-
-            logger("ENGINE VALIDATED. Initializing Map...");
+            logger("Engine OK. Initializing Map...");
             
             try {
                 map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
                 
-                logger("MAP READY. Fetching 8-Band TIFF...");
-
+                logger("Fetching 8-Band Terroir Cube...");
                 const res = await fetch(cogUrl);
+                
                 if (!res.ok) throw new Error(`HTTP ${res.status}: TIFF NOT FOUND at /data/`);
 
-                logger("FETCH OK. Unpacking Binary...");
+                logger("Downloading Binary Data...");
                 const buf = await res.arrayBuffer();
+                
+                logger("Unpacking 10m Scientific Stack...");
                 activeGeo = await parseGeoraster(buf);
                 
                 logger(`SUCCESS: ${(buf.byteLength/1048576).toFixed(1)}MB Online.`);
                 render(0, document.querySelector('.tab'));
 
             } catch (e) {
-                logger(`CRITICAL ERROR: ${e.message}`);
-                console.error(e);
+                logger(`CRITICAL: ${e.message}`);
             }
-        });
+        }
 
         function render(band, el) {
             if (!activeGeo) return;
@@ -92,7 +95,7 @@
             el.classList.add('active');
             if (geoLayer) map.removeLayer(geoLayer);
 
-            logger(`Layer: Band ${band} rendering...`);
+            logger(`Rendering Band ${band}...`);
 
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
@@ -102,23 +105,22 @@
                     const v = vals[band];
                     if (v === null || isNaN(v) || v === 0) return null;
                     
-                    try {
-                        switch(band) {
-                            case 0: return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
-                            case 1: return chroma.scale(['#3d2b1f', '#d4af37', '#fff']).domain([0, 0.2])(v).hex();
-                            case 2: return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
-                            case 3: return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
-                            case 4: return chroma.scale(['#fdf5e6', '#8b4513']).domain([1.0, 2.2])(v).hex();
-                            case 5: return chroma.scale(['#2e8b57', '#eee', '#8b0000']).domain([-10, 10])(v).hex();
-                            case 6: return chroma.scale(['#2c3e50', '#f1c40f']).domain([-1, 1])(v).hex();
-                            case 7: return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
-                        }
-                    } catch(e) { return null; }
+                    switch(band) {
+                        case 0: return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
+                        case 1: return chroma.scale(['#3d2b1f', '#d4af37', '#fff']).domain([0, 0.2])(v).hex();
+                        case 2: return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
+                        case 3: return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
+                        case 4: return chroma.scale(['#fdf5e6', '#8b4513']).domain([1.0, 2.2])(v).hex();
+                        case 5: return chroma.scale(['#2e8b57', '#eee', '#8b0000']).domain([-10, 10])(v).hex();
+                        case 6: return chroma.scale(['#2c3e50', '#f1c40f']).domain([-1, 1])(v).hex();
+                        case 7: return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
+                    }
                 }
             });
             geoLayer.addTo(map);
         }
 
+        // Tap Probe
         map.on('click', (ev) => {
             if (!activeGeo) return;
             const pt = L.Projection.SphericalMercator.project(ev.latlng);
@@ -126,19 +128,22 @@
             const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
 
             try {
-                const v = activeGeo.values[0][y][x];
-                const w = activeGeo.values[3][y][x];
-                const t = activeGeo.values[7][y][x];
+                const vigor = activeGeo.values[0][y][x];
+                const water = activeGeo.values[3][y][x];
+                const temp = activeGeo.values[7][y][x];
                 
                 L.popup().setLatLng(ev.latlng).setContent(`
                     <div style="min-width:140px">
-                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v.toFixed(3)}</span></div>
-                        <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w.toFixed(2)}</span></div>
-                        <div class="stat-row"><span class="stat-label">Temp</span><span class="stat-val">${t.toFixed(1)}°C</span></div>
+                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${vigor.toFixed(3)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${water.toFixed(2)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Temp</span><span class="stat-val">${temp.toFixed(1)}°C</span></div>
                     </div>
                 `).openOn(map);
             } catch(err) {}
         });
+
+        // EXECUTE IMMEDIATELY
+        startEngine();
     </script>
 </body>
 </html>
