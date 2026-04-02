@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha</title>
+    <title>Pierrevert | Alpha</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
         body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 80px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; border-radius: 8px; overflow-y: auto; box-shadow: 0 4px 20px #000; pointer-events: none; }
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 80px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; border-radius: 8px; overflow-y: auto; pointer-events: none; }
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 94%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border: 1px solid #444; border-radius: 14px; }
         .tab { text-align: center; padding: 14px 2px; color: #555; cursor: pointer; font-size: 9px; text-transform: uppercase; font-weight: 800; border-radius: 6px; border: 1px solid transparent; }
         .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
@@ -20,7 +20,7 @@
 </head>
 <body>
 
-    <div id="log">SYSTEM: Awaiting Engine Start...</div>
+    <div id="log">SYSTEM: Booting Intelligence...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -36,52 +36,63 @@
     <script src="https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
 
     <script>
-        // --- WATCHDOG ---
         const logger = (m, color = "#0f0") => { 
             const l = document.getElementById('log');
             if (l) l.innerHTML = `<span style="color:${color}">> ${m}</span><br>` + l.innerHTML;
-        };
-
-        window.onerror = (msg, url, line) => {
-            logger(`FATAL JS ERROR: ${msg} (Line ${line})`, "red");
-            return false;
         };
 
         let map, geoLayer, activeGeo = null;
         const cogUrl = "data/pierrevert_final.tif"; 
 
         async function init() {
-            logger("HEARTBEAT: Checking Engine Components...");
+            logger("1. ENGINE: Validating Hardware...");
             
-            // Check if libraries exist
-            const libs = { 
-                "Leaflet": typeof L !== 'undefined', 
-                "Chroma": typeof chroma !== 'undefined', 
-                "GeoRaster": typeof parseGeoraster !== 'undefined' 
-            };
-            
-            for (let [name, ok] of Object.entries(libs)) {
-                if (!ok) {
-                    logger(`CRITICAL: ${name} failed to load!`, "red");
-                    return;
-                }
-            }
-
-            logger("1. Map Base Initializing...");
-            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-            
-            logger("2. Connecting to Terroir Stack...");
             try {
-                // Pointing directly to URL triggers COG Lazy-Loading
-                activeGeo = await parseGeoraster(cogUrl, { load_data: false, use_web_worker: true });
+                // Initialize Map First
+                map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
                 
-                logger(`3. SUCCESS: ${activeGeo.numberOfBands} Bands Online.`);
+                logger("2. NETWORK: Connecting to Terroir Stack...");
+                
+                // Using the URL directly triggers COG/Lazy-Load mode automatically
+                activeGeo = await parseGeoraster(cogUrl);
+                
+                logger(`3. DATA: ${activeGeo.numberOfBands} Bands Online.`);
+                
+                // Set up the Map Click INSIDE init so 'map' and 'activeGeo' are definitely ready
+                map.on('click', async (ev) => {
+                    if (!activeGeo) return;
+                    
+                    const pt = L.Projection.SphericalMercator.project(ev.latlng);
+                    const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
+                    const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
+                    
+                    try {
+                        // COG Pixel Probe: Asynchronously fetch just this 1x1 pixel area
+                        const pixelValues = await activeGeo.getValues({
+                            left: x, top: y, width: 1, height: 1, resampleMethod: 'nearest'
+                        });
+
+                        const v = pixelValues[0][0][0]; // Band 0: Vigor
+                        const w = pixelValues[3][0][0]; // Band 3: Water
+                        const t = pixelValues[7][0][0]; // Band 7: Thermal
+
+                        L.popup().setLatLng(ev.latlng).setContent(`
+                            <div style="min-width:140px">
+                                <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v ? v.toFixed(3) : "N/A"}</span></div>
+                                <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w ? w.toFixed(2) : "N/A"}</span></div>
+                                <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${t ? t.toFixed(1) + "°C" : "N/A"}</span></div>
+                            </div>
+                        `).openOn(map);
+                    } catch(err) { console.error("Probe Error", err); }
+                });
+
                 render(0, document.getElementById('t0'));
+                logger("4. SUCCESS: System Alpha Fully Operational.");
 
             } catch (e) {
                 logger(`ERROR: ${e.message}`, "red");
-                if (e.message.includes("404")) logger("Check: data/pierrevert_final.tif missing on GitHub.");
+                console.error(e);
             }
         }
 
@@ -89,9 +100,11 @@
             if (!activeGeo) return;
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
+            
             if (geoLayer) map.removeLayer(geoLayer);
 
-            logger(`STREAMING: Layer ${band}...`);
+            logger(`STREAMING: Band ${band}...`);
+            
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
                 opacity: 0.85,
@@ -99,6 +112,8 @@
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (v === null || isNaN(v) || v === 0) return null;
+                    
+                    // Pierrevert Scientific Thresholds
                     if (band === 0) return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
                     if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
@@ -109,27 +124,8 @@
             geoLayer.addTo(map);
         }
 
-        map.on('click', (ev) => {
-            if (!activeGeo) return;
-            const pt = L.Projection.SphericalMercator.project(ev.latlng);
-            const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
-            const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
-            try {
-                const v = activeGeo.values[0][y][x];
-                const w = activeGeo.values[3][y][x];
-                const t = activeGeo.values[7][y][x];
-                L.popup().setLatLng(ev.latlng).setContent(`
-                    <div style="min-width:140px">
-                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v.toFixed(3)}</span></div>
-                        <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w.toFixed(2)}</span></div>
-                        <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${t.toFixed(1)}°C</span></div>
-                    </div>
-                `).openOn(map);
-            } catch(err) {}
-        });
-
-        // Safe fire
-        setTimeout(init, 500);
+        // Trigger start immediately
+        init();
     </script>
 </body>
 </html>
