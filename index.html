@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha v3</title>
+    <title>Pierrevert | System Alpha v3.1</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -11,12 +11,12 @@
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
         body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
         
-        /* Mode Switcher: Physiology vs Terrain */
+        /* Navigation: Dual-Core Toggle */
         .mode-switch { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; gap: 8px; background: var(--ui); padding: 6px; border-radius: 30px; border: 1px solid #444; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
         .m-btn { background: transparent; color: #666; border: none; padding: 10px 22px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
         .m-btn.active { background: var(--gold); color: #000; }
 
-        /* Band Tabs */
+        /* Band Selectors */
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border-radius: 18px; border: 1px solid #444; }
         .tab { text-align: center; color: #555; font-size: 9px; padding: 14px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 10px; border: 1px solid transparent; }
         .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
@@ -46,10 +46,15 @@
     <script>
         let map, geoLayer, activeGeo = null, currentMode = 'physiology';
 
-        // CONFIG: Maps v3 Scaled Data (Int16 / 100)
+        // 1. Resolve Absolute Base URL for Worker Consistency
+        const path = window.location.pathname;
+        const dir = path.substring(0, path.lastIndexOf('/')) + '/';
+        const absoluteBase = window.location.origin + dir;
+
+        // 2. CONFIG: Maps v3 Scaled Data (Int16 / 100)
         const config = {
             physiology: { 
-                url: "data/physiology_v3.tif", 
+                url: absoluteBase + "data/physiology_v3.tif", 
                 bands: ["Vigor", "Water", "Thermal", "Clay"],
                 scales: [
                     [0.05, 0.25, ['#333', '#d4af37', '#27ae60']], // NDRE
@@ -59,7 +64,7 @@
                 ]
             },
             terrain: { 
-                url: "data/terrain_v3.tif", 
+                url: absoluteBase + "data/terrain_v3.tif", 
                 bands: ["Soil", "Slope", "TPI", "Aspect"],
                 scales: [
                     [0, 0.2, ['#3d2b1f', '#d4af37', '#fff']],     // BSI
@@ -78,7 +83,7 @@
             if (geoLayer) map.removeLayer(geoLayer);
             
             try {
-                // Initialize new GeoRaster
+                // Initialize GeoRaster with the full absolute path
                 activeGeo = await parseGeoraster(config[type].url);
                 
                 // Rebuild UI Tabs
@@ -88,7 +93,10 @@
                 ).join('');
                 
                 render(0, container.firstChild);
-            } catch (e) { console.error("Data Load Failure:", e); }
+            } catch (e) { 
+                console.error("Critical Load Failure:", e);
+                alert("Engine error: Failed to fetch band data.");
+            }
         }
 
         function render(band, el) {
@@ -105,7 +113,7 @@
                 opacity: 0.85,
                 resolution: 128,
                 pixelValuesToColorFn: vals => {
-                    // THE DECODER: Reverse the 100x scaling from Colab
+                    // DECODER: Divide by 100 to return Int16 to original Scientific Float
                     const v = vals[0] / 100; 
                     if (v === null || isNaN(v) || v === 0) return null;
                     
@@ -130,8 +138,8 @@
                     L.popup().setLatLng(ev.latlng).setContent(`
                         <div style="min-width:140px">
                             <div class="stat-row">
-                                <span class="stat-label">Current Layer</span>
-                                <span class="stat-val">${val.toFixed(2)}</span>
+                                <span class="stat-label">${config[currentMode].bands[document.querySelector('.tab.active').innerText.toLowerCase() === config[currentMode].bands[0].toLowerCase() ? 0 : 0]} Value</span>
+                                <span class="stat-val">${val.toFixed(3)}</span>
                             </div>
                         </div>
                     `).openOn(map);
@@ -139,7 +147,7 @@
             });
         }
 
-        // Boot Sequence
+        // Initialization
         map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         
