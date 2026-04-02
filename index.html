@@ -3,64 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>System Alpha | Debug Mode</title>
+    <title>Pierrevert | System Alpha</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <style>
         body, html, #map { margin: 0; height: 100%; width: 100%; background: #000; overflow: hidden; }
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 80px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 11px; padding: 10px; z-index: 9999; border: 1px solid #0f0; overflow-y: auto; border-radius: 5px; }
-        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; background: #111; padding: 10px; border-radius: 10px; }
-        .tab { text-align: center; color: #555; font-size: 10px; padding: 10px 0; cursor: pointer; border: 1px solid #333; }
-        .tab.active { color: #d4af37; border-color: #d4af37; }
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 75px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 11px; padding: 10px; z-index: 9999; border: 1px solid #333; overflow-y: auto; border-radius: 5px; pointer-events: none; }
+        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: rgba(15,15,15,0.9); padding: 8px; border-radius: 12px; border: 1px solid #444; }
+        .tab { text-align: center; color: #666; font-size: 9px; padding: 12px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 4px; }
+        .tab.active { color: #d4af37; background: rgba(212,175,55,0.1); border: 1px solid #d4af37; }
     </style>
 </head>
 <body>
 
-    <div id="log">INIT: Console Booting...</div>
+    <div id="log">BOOT: Initializing Lazy-Load...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
-        <div class="tab active" onclick="render(0, this)">Vigor</div>
-        <div class="tab" onclick="render(3, this)">Water</div>
-        <div class="tab" onclick="render(7, this)">Thermal</div>
-        <div class="tab" onclick="render(2, this)">Slope</div>
+        <div id="t0" class="tab active" onclick="render(0, this)">Vigor</div>
+        <div id="t3" class="tab" onclick="render(3, this)">Water</div>
+        <div id="t7" class="tab" onclick="render(7, this)">Thermal</div>
+        <div id="t2" class="tab" onclick="render(2, this)">Slope</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
-    <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
 
     <script>
-        const log = (m) => { document.getElementById('log').innerHTML += `> ${m}<br>`; };
+        const logger = (m) => { document.getElementById('log').innerHTML = `> ${m}<br>` + document.getElementById('log').innerHTML; };
         
-        let map, activeGeo;
+        let map, geoLayer, activeGeo = null;
+        // The URL is passed directly to the parser for COG support
         const cogUrl = "data/pierrevert_final.tif";
 
-        // BOOT SEQUENCE
-        async function boot() {
-            log("CHECK: Testing Library Integrity...");
-            if (typeof L === 'undefined' || typeof chroma === 'undefined' || typeof parseGeoraster === 'undefined') {
-                log("FATAL: Library Loading Blocked. Check your internet/firewall.");
-                return;
-            }
-            
-            log("READY: Core Libraries Online.");
+        async function init() {
+            logger("CHECK: Starting Map...");
             map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
             
-            log(`FETCH: Requesting ${cogUrl}...`);
+            logger("COG: Reading Remote Headers...");
             try {
-                const res = await fetch(cogUrl);
-                if (!res.ok) throw new Error("File Missing in /data/ folder.");
+                // IMPORTANT: We pass the URL, NOT the buffer. 
+                // This uses HTTP Range Requests to only pull what's needed.
+                activeGeo = await parseGeoraster(cogUrl);
                 
-                log("STREAM: Parsing Binary Data...");
-                const buf = await res.arrayBuffer();
-                activeGeo = await parseGeoraster(buf);
-                
-                log("SUCCESS: 8-Band Stack Fully Parsed.");
-                render(0, document.querySelector('.tab'));
+                logger(`SUCCESS: 8-Bands Detected. Ready.`);
+                render(0, document.getElementById('t0'));
             } catch (e) {
-                log(`ERROR: ${e.message}`);
+                logger("ERROR: " + e.message);
+                console.error(e);
             }
         }
 
@@ -69,23 +61,29 @@
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
             
-            const layer = new GeoRasterLayer({
+            if (geoLayer) map.removeLayer(geoLayer);
+
+            logger(`STREAMING: Band ${band}...`);
+            
+            geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
+                opacity: 0.8,
+                resolution: 128, // High performance
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
-                    if (!v) return null;
+                    if (!v || v === 0) return null;
+                    
                     if (band === 0) return chroma.scale(['#444', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
                     if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
-                    return chroma.scale(['#000', '#fff']).domain([0, 30])(v).hex();
-                },
-                resolution: 64
+                    if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
+                    return null;
+                }
             });
-            layer.addTo(map);
+            geoLayer.addTo(map);
         }
 
-        // START
-        boot();
+        init();
     </script>
 </body>
 </html>
