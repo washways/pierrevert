@@ -3,17 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha v2</title>
+    <title>Pierrevert | System Alpha v3</title>
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: sans-serif; overflow: hidden; }
-        .mode-switch { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; gap: 8px; background: var(--ui); padding: 5px; border-radius: 30px; border: 1px solid #444; }
-        .m-btn { background: transparent; color: #666; border: none; padding: 10px 20px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+        
+        /* Mode Switcher: Physiology vs Terrain */
+        .mode-switch { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; gap: 8px; background: var(--ui); padding: 6px; border-radius: 30px; border: 1px solid #444; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+        .m-btn { background: transparent; color: #666; border: none; padding: 10px 22px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
         .m-btn.active { background: var(--gold); color: #000; }
-        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: var(--ui); padding: 8px; border-radius: 15px; border: 1px solid #444; }
-        .tab { text-align: center; color: #555; font-size: 9px; padding: 15px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 8px; }
-        .tab.active { color: var(--gold); background: rgba(212,175,55,0.1); border: 1px solid var(--gold); }
+
+        /* Band Tabs */
+        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border-radius: 18px; border: 1px solid #444; }
+        .tab { text-align: center; color: #555; font-size: 9px; padding: 14px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 10px; border: 1px solid transparent; }
+        .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
+
+        /* Popup Styling */
+        .leaflet-popup-content-wrapper { background: var(--ui); color: white; border: 1px solid var(--gold); border-radius: 12px; }
+        .stat-row { display: flex; justify-content: space-between; margin: 5px 0; border-bottom: 1px solid #222; padding-bottom: 4px; font-family: monospace; font-size: 11px; }
+        .stat-label { color: #888; text-transform: uppercase; }
+        .stat-val { color: var(--gold); font-weight: bold; }
     </style>
 </head>
 <body>
@@ -22,6 +34,7 @@
         <button id="btn-phys" class="m-btn active" onclick="switchCube('physiology')">Physiology</button>
         <button id="btn-terr" class="m-btn" onclick="switchCube('terrain')">Terrain</button>
     </div>
+
     <div id="map"></div>
     <div class="tabs-container" id="tabs-ui"></div>
 
@@ -32,43 +45,105 @@
 
     <script>
         let map, geoLayer, activeGeo = null, currentMode = 'physiology';
+
+        // CONFIG: Maps v3 Scaled Data (Int16 / 100)
         const config = {
-            physiology: { url: "data/physiology_v2.tif", bands: ["Vigor", "Water", "Thermal", "Clay"], 
-                scales: [[0.05, 0.25, ['#333', '#d4af37', '#27ae60']], [-0.1, 0.3, ['#eee', '#3498db', '#000080']], [25, 45, ['#3498db', '#f39c12', '#e74c3c']], [1.0, 2.2, ['#fdf5e6', '#8b4513']]]},
-            terrain: { url: "data/terrain_v2.tif", bands: ["Soil", "Slope", "TPI", "Aspect"],
-                scales: [[0, 0.2, ['#3d2b1f', '#d4af37', '#fff']], [0, 25, ['#111', '#ff4444']], [-5, 5, ['#2e8b57', '#eee', '#8b0000']], [-1, 1, ['#2c3e50', '#f1c40f']]]}
+            physiology: { 
+                url: "data/physiology_v3.tif", 
+                bands: ["Vigor", "Water", "Thermal", "Clay"],
+                scales: [
+                    [0.05, 0.25, ['#333', '#d4af37', '#27ae60']], // NDRE
+                    [-0.1, 0.3, ['#eee', '#3498db', '#000080']],  // NDMI
+                    [25, 45, ['#3498db', '#f39c12', '#e74c3c']],   // Thermal
+                    [1.0, 2.2, ['#fdf5e6', '#8b4513']]             // Clay
+                ]
+            },
+            terrain: { 
+                url: "data/terrain_v3.tif", 
+                bands: ["Soil", "Slope", "TPI", "Aspect"],
+                scales: [
+                    [0, 0.2, ['#3d2b1f', '#d4af37', '#fff']],     // BSI
+                    [0, 25, ['#111', '#ff4444']],                 // Slope
+                    [-5, 5, ['#2e8b57', '#eee', '#8b0000']],      // TPI
+                    [-1, 1, ['#2c3e50', '#f1c40f']]               // Northness
+                ]
+            }
         };
 
         async function switchCube(type) {
             currentMode = type;
             document.querySelectorAll('.m-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(type === 'physiology' ? 'btn-phys' : 'btn-terr').classList.add('active');
+            
             if (geoLayer) map.removeLayer(geoLayer);
-            activeGeo = await parseGeoraster(config[type].url);
-            const container = document.getElementById('tabs-ui');
-            container.innerHTML = config[type].bands.map((name, i) => `<div class="tab ${i===0?'active':''}" onclick="render(${i}, this)">${name}</div>`).join('');
-            render(0, container.firstChild);
+            
+            try {
+                // Initialize new GeoRaster
+                activeGeo = await parseGeoraster(config[type].url);
+                
+                // Rebuild UI Tabs
+                const container = document.getElementById('tabs-ui');
+                container.innerHTML = config[type].bands.map((name, i) => 
+                    `<div class="tab ${i===0?'active':''}" onclick="render(${i}, this)">${name}</div>`
+                ).join('');
+                
+                render(0, container.firstChild);
+            } catch (e) { console.error("Data Load Failure:", e); }
         }
 
         function render(band, el) {
             if (!activeGeo || !el) return;
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
+            
             if (geoLayer) map.removeLayer(geoLayer);
+
             const settings = config[currentMode].scales[band];
+
             geoLayer = new GeoRasterLayer({
-                georaster: activeGeo, opacity: 0.8, resolution: 128,
+                georaster: activeGeo,
+                opacity: 0.85,
+                resolution: 128,
                 pixelValuesToColorFn: vals => {
-                    const v = vals[0];
-                    if (!v || v === 0) return null;
+                    // THE DECODER: Reverse the 100x scaling from Colab
+                    const v = vals[0] / 100; 
+                    if (v === null || isNaN(v) || v === 0) return null;
+                    
                     return chroma.scale(settings[2]).domain([settings[0], settings[1]])(v).hex();
                 }
             });
             geoLayer.addTo(map);
         }
 
-        map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 13);
+        // Hydro-Probe on Click
+        function setupProbe() {
+            map.on('click', async (ev) => {
+                if (!activeGeo) return;
+                const pt = L.Projection.SphericalMercator.project(ev.latlng);
+                const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
+                const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
+
+                try {
+                    const vals = await activeGeo.getValues({ left: x, top: y, width: 1, height: 1 });
+                    const val = vals[0][0][0] / 100;
+
+                    L.popup().setLatLng(ev.latlng).setContent(`
+                        <div style="min-width:140px">
+                            <div class="stat-row">
+                                <span class="stat-label">Current Layer</span>
+                                <span class="stat-val">${val.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    `).openOn(map);
+                } catch(err) {}
+            });
+        }
+
+        // Boot Sequence
+        map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        
+        setupProbe();
         switchCube('physiology');
     </script>
 </body>
