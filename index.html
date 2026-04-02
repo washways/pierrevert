@@ -3,19 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Emergency Debug</title>
+    <title>Pierrevert | System Alpha</title>
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: #000; overflow: hidden; }
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 100px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 11px; padding: 15px; z-index: 9999; border: 2px solid #333; overflow-y: auto; border-radius: 8px; }
-        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #111; padding: 10px; border-radius: 12px; border: 1px solid #444; }
-        .tab { text-align: center; color: #444; font-size: 10px; padding: 12px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border: 1px solid transparent; }
-        .tab.active { color: #d4af37; border-bottom: 2px solid #d4af37; }
+        :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+        
+        /* Diagnostic Log Overlay */
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 70px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; border-radius: 8px; pointer-events: none; overflow-y: auto; box-shadow: 0 4px 20px #000; }
+        
+        /* 8-Button UI Grid */
+        .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 94%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border: 1px solid #444; border-radius: 14px; box-shadow: 0 -4px 25px rgba(0,0,0,0.7); }
+        .tab { text-align: center; padding: 14px 2px; color: #555; cursor: pointer; font-size: 9px; text-transform: uppercase; font-weight: 800; border-radius: 6px; transition: 0.2s; border: 1px solid transparent; }
+        .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
+
+        /* Popup Styling */
+        .leaflet-popup-content-wrapper { background: var(--ui); color: white; border: 1px solid var(--gold); border-radius: 10px; padding: 5px; }
+        .leaflet-popup-tip { background: var(--gold); }
+        .stat-row { display: flex; justify-content: space-between; margin: 5px 0; border-bottom: 1px solid #222; padding-bottom: 4px; font-family: monospace; font-size: 11px; }
+        .stat-label { color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-val { color: var(--gold); font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="log">1. HTML LOADED. Awaiting Script...</div>
+    <div id="log">SYSTEM: Booting Pierrevert Core...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -34,72 +48,96 @@
         const logger = (m) => { 
             const l = document.getElementById('log');
             if (l) l.innerHTML = `> ${m}<br>` + l.innerHTML;
-            console.log(m);
+            console.log("PIERREVERT-LOG:", m);
         };
 
-        // 2. IMMEDIATE SCRIPT START
-        logger("2. SCRIPT STARTED. Checking Libraries...");
-
         let map, geoLayer, activeGeo = null;
-        
-        // POINT THIS TO YOUR LARGEST FILENAME IF 'pierrevert_final.tif' IS MISSING
+        // The path to your optimized 8-band TIFF
         const cogUrl = "data/pierrevert_final.tif"; 
 
         async function init() {
+            logger("1. Initializing Map Base...");
             try {
-                // Check if Libraries are present
-                if (typeof L === 'undefined') throw new Error("Leaflet Library Missing");
-                if (typeof chroma === 'undefined') throw new Error("Chroma Library Missing");
-                if (typeof parseGeoraster === 'undefined') throw new Error("Georaster Library Missing");
-                
-                logger("3. LIBRARIES OK. Building Map...");
-                map = L.map('map', { zoomControl: false }).setView([43.811, 5.750], 14);
+                // Initialize Leaflet
+                map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-                logger(`4. FETCHING: ${cogUrl}`);
-                const response = await fetch(cogUrl, { method: 'HEAD' });
                 
-                if (!response.ok) {
-                    throw new Error(`File not found at ${cogUrl}. Check your GitHub folder!`);
-                }
+                logger("2. Validating TIFF Source...");
+                const check = await fetch(cogUrl, { method: 'HEAD' });
+                if(!check.ok) throw new Error(`File not found at ${cogUrl}`);
 
-                logger("5. FILE FOUND. Unpacking COG...");
-                activeGeo = await parseGeoraster(cogUrl);
+                logger("3. Unpacking Metadata (Lazy-Mode)...");
                 
-                logger("6. SUCCESS! 8-Band Stack Online.");
+                // CRITICAL FIX: Remote Web Worker + No Initial Data Load
+                // This stops the mobile browser from hanging while parsing 8 bands.
+                activeGeo = await parseGeoraster(cogUrl, { 
+                    load_data: false, 
+                    use_web_worker: true 
+                });
+                
+                logger(`4. SUCCESS: ${activeGeo.numberOfBands} Bands Active.`);
                 render(0, document.getElementById('t0'));
 
-            } catch (err) {
-                logger("❌ FATAL: " + err.message);
-                // This alert will pop up on your phone so you can't miss it
-                alert("System Error: " + err.message);
+            } catch (e) {
+                logger("❌ FATAL: " + e.message);
+                if (e.message.includes("404")) logger("Check if filename matches exactly in GitHub data/ folder.");
             }
         }
 
         function render(band, el) {
             if (!activeGeo) return;
+            
+            // UI Update
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
+            
             if (geoLayer) map.removeLayer(geoLayer);
 
-            logger(`Rendering Band ${band}...`);
+            logger(`STREAMING: Band ${band} active...`);
+            
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
-                opacity: 0.8,
-                resolution: 64,
+                opacity: 0.85,
+                resolution: 128,
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
-                    if (!v || v === 0) return null;
-                    if (band === 0) return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
-                    if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
-                    if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
-                    if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
+                    if (v === null || isNaN(v) || v === 0) return null;
+                    
+                    // Scientific Color Ramps for Pierrevert Terroir
+                    if (band === 0) return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex(); // NDRE
+                    if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();  // NDMI
+                    if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();  // Thermal
+                    if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();                // Slope
+                    return null;
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // FIRE IMMEDIATELY
+        // Hydro-Thermal Probe on Map Tap
+        map.on('click', (ev) => {
+            if (!activeGeo) return;
+            const pt = L.Projection.SphericalMercator.project(ev.latlng);
+            const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
+            const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
+
+            try {
+                const vigor = activeGeo.values[0][y][x]; // NDRE
+                const water = activeGeo.values[3][y][x]; // NDMI
+                const temp  = activeGeo.values[7][y][x]; // Thermal
+                
+                L.popup().setLatLng(ev.latlng).setContent(`
+                    <div style="min-width:150px">
+                        <div style="text-align:center; font-weight:bold; margin-bottom:10px; color:#aaa; font-size:9px">TERROIR INSIGHT</div>
+                        <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${vigor.toFixed(3)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${water.toFixed(2)}</span></div>
+                        <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${temp.toFixed(1)}°C</span></div>
+                    </div>
+                `).openOn(map);
+            } catch(err) { logger("TAP: Outside Data Mask"); }
+        });
+
+        // Run Engine
         init();
     </script>
 </body>
