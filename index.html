@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha v3.1</title>
+    <title>Pierrevert | System Alpha v3.2</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     
@@ -11,21 +11,18 @@
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
         body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
         
-        /* Navigation: Dual-Core Toggle */
+        /* Dual-Core Mode Toggle */
         .mode-switch { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; gap: 8px; background: var(--ui); padding: 6px; border-radius: 30px; border: 1px solid #444; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
         .m-btn { background: transparent; color: #666; border: none; padding: 10px 22px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
         .m-btn.active { background: var(--gold); color: #000; }
 
-        /* Band Selectors */
+        /* Hydro-Geological Band Tabs */
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border-radius: 18px; border: 1px solid #444; }
         .tab { text-align: center; color: #555; font-size: 9px; padding: 14px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 10px; border: 1px solid transparent; }
         .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
 
-        /* Popup Styling */
-        .leaflet-popup-content-wrapper { background: var(--ui); color: white; border: 1px solid var(--gold); border-radius: 12px; }
-        .stat-row { display: flex; justify-content: space-between; margin: 5px 0; border-bottom: 1px solid #222; padding-bottom: 4px; font-family: monospace; font-size: 11px; }
-        .stat-label { color: #888; text-transform: uppercase; }
-        .stat-val { color: var(--gold); font-weight: bold; }
+        /* Status UI (Optional: for monitoring load) */
+        #loader { position: absolute; top: 80px; left: 50%; transform: translateX(-50%); z-index: 1500; color: var(--gold); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; display: none; }
     </style>
 </head>
 <body>
@@ -34,7 +31,8 @@
         <button id="btn-phys" class="m-btn active" onclick="switchCube('physiology')">Physiology</button>
         <button id="btn-terr" class="m-btn" onclick="switchCube('terrain')">Terrain</button>
     </div>
-
+    
+    <div id="loader">Processing Terroir...</div>
     <div id="map"></div>
     <div class="tabs-container" id="tabs-ui"></div>
 
@@ -46,21 +44,21 @@
     <script>
         let map, geoLayer, activeGeo = null, currentMode = 'physiology';
 
-        // 1. Resolve Absolute Base URL for Worker Consistency
+        // 1. ABSOLUTE PATH RESOLUTION (Fixes WebWorker 404s)
         const path = window.location.pathname;
         const dir = path.substring(0, path.lastIndexOf('/')) + '/';
         const absoluteBase = window.location.origin + dir;
 
-        // 2. CONFIG: Maps v3 Scaled Data (Int16 / 100)
+        // 2. CONFIG: Calibrated for v3 (Int16 / 100)
         const config = {
             physiology: { 
                 url: absoluteBase + "data/physiology_v3.tif", 
                 bands: ["Vigor", "Water", "Thermal", "Clay"],
                 scales: [
-                    [0.05, 0.25, ['#333', '#d4af37', '#27ae60']], // NDRE
-                    [-0.1, 0.3, ['#eee', '#3498db', '#000080']],  // NDMI
-                    [25, 45, ['#3498db', '#f39c12', '#e74c3c']],   // Thermal
-                    [1.0, 2.2, ['#fdf5e6', '#8b4513']]             // Clay
+                    [0.05, 0.25, ['#333', '#d4af37', '#27ae60']], // Vigor (NDRE)
+                    [-0.1, 0.3, ['#eee', '#3498db', '#000080']],  // Water (NDMI)
+                    [25, 45, ['#3498db', '#f39c12', '#e74c3c']],   // Temp (C)
+                    [1.0, 2.2, ['#fdf5e6', '#8b4513']]             // Clay Index
                 ]
             },
             terrain: { 
@@ -77,25 +75,33 @@
 
         async function switchCube(type) {
             currentMode = type;
+            document.getElementById('loader').style.display = 'block';
+            
+            // Toggle UI State
             document.querySelectorAll('.m-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(type === 'physiology' ? 'btn-phys' : 'btn-terr').classList.add('active');
             
             if (geoLayer) map.removeLayer(geoLayer);
             
             try {
-                // Initialize GeoRaster with the full absolute path
-                activeGeo = await parseGeoraster(config[type].url);
+                // --- VELOCITY ENGINE: LAZY LOAD CONFIG ---
+                // load_data: false triggers COG behavior (Streams only visible pixels)
+                activeGeo = await parseGeoraster(config[type].url, { 
+                    load_data: false, 
+                    use_web_worker: true 
+                });
                 
-                // Rebuild UI Tabs
+                // Build Tabs
                 const container = document.getElementById('tabs-ui');
                 container.innerHTML = config[type].bands.map((name, i) => 
                     `<div class="tab ${i===0?'active':''}" onclick="render(${i}, this)">${name}</div>`
                 ).join('');
                 
                 render(0, container.firstChild);
+                document.getElementById('loader').style.display = 'none';
             } catch (e) { 
-                console.error("Critical Load Failure:", e);
-                alert("Engine error: Failed to fetch band data.");
+                console.error("Fetch Error:", e);
+                document.getElementById('loader').innerText = "Load Failed";
             }
         }
 
@@ -111,9 +117,9 @@
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
                 opacity: 0.85,
-                resolution: 128,
+                resolution: 128, // Increase to 64 for even more speed on older phones
                 pixelValuesToColorFn: vals => {
-                    // DECODER: Divide by 100 to return Int16 to original Scientific Float
+                    // DECODE: Convert Int16 back to original float
                     const v = vals[0] / 100; 
                     if (v === null || isNaN(v) || v === 0) return null;
                     
@@ -123,35 +129,16 @@
             geoLayer.addTo(map);
         }
 
-        // Hydro-Probe on Click
-        function setupProbe() {
-            map.on('click', async (ev) => {
-                if (!activeGeo) return;
-                const pt = L.Projection.SphericalMercator.project(ev.latlng);
-                const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
-                const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
+        // Initialize Map
+        map = L.map('map', { 
+            zoomControl: false, 
+            attributionControl: false,
+            preferCanvas: true // Significant mobile performance boost
+        }).setView([43.811, 5.750], 13);
 
-                try {
-                    const vals = await activeGeo.getValues({ left: x, top: y, width: 1, height: 1 });
-                    const val = vals[0][0][0] / 100;
-
-                    L.popup().setLatLng(ev.latlng).setContent(`
-                        <div style="min-width:140px">
-                            <div class="stat-row">
-                                <span class="stat-label">${config[currentMode].bands[document.querySelector('.tab.active').innerText.toLowerCase() === config[currentMode].bands[0].toLowerCase() ? 0 : 0]} Value</span>
-                                <span class="stat-val">${val.toFixed(3)}</span>
-                            </div>
-                        </div>
-                    `).openOn(map);
-                } catch(err) {}
-            });
-        }
-
-        // Initialization
-        map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         
-        setupProbe();
+        // Initial Boot
         switchCube('physiology');
     </script>
 </body>
