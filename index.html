@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Alpha</title>
+    <title>Pierrevert | System Alpha</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root { --gold: #d4af37; --bg: #050505; --ui: rgba(15, 15, 15, 0.98); }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 80px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; border-radius: 8px; overflow-y: auto; pointer-events: none; }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, sans-serif; overflow: hidden; }
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 85px; background: var(--ui); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; border-radius: 8px; overflow-y: auto; pointer-events: none; }
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 94%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: var(--ui); padding: 10px; border: 1px solid #444; border-radius: 14px; }
         .tab { text-align: center; padding: 14px 2px; color: #555; cursor: pointer; font-size: 9px; text-transform: uppercase; font-weight: 800; border-radius: 6px; border: 1px solid transparent; }
         .tab.active { color: var(--gold); background: rgba(212, 175, 55, 0.1); border: 1px solid var(--gold); }
@@ -20,7 +20,7 @@
 </head>
 <body>
 
-    <div id="log">SYSTEM: Booting Intelligence...</div>
+    <div id="log">SYSTEM: Awaiting Connection...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -32,8 +32,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
 
     <script>
         const logger = (m, color = "#0f0") => { 
@@ -42,57 +42,69 @@
         };
 
         let map, geoLayer, activeGeo = null;
-        const cogUrl = "data/pierrevert_final.tif"; 
+        // Cache-buster added to force GitHub to serve the latest 20.8MB file
+        const cogUrl = "data/pierrevert_final.tif?v=" + Date.now(); 
 
         async function init() {
-            logger("1. ENGINE: Validating Hardware...");
-            
+            logger("1. ENGINE: Map Ready.");
             try {
-                // Initialize Map First
                 map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
                 
-                logger("2. NETWORK: Connecting to Terroir Stack...");
+                logger("2. NETWORK: Starting Stream...");
                 
-                // Using the URL directly triggers COG/Lazy-Load mode automatically
-                activeGeo = await parseGeoraster(cogUrl);
+                const response = await fetch(cogUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: File not found.`);
+
+                // --- PROGRESS TRACKER ---
+                const reader = response.body.getReader();
+                const contentLength = +response.headers.get('Content-Length');
+                let receivedLength = 0;
+                let chunks = [];
+
+                while(true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    receivedLength += value.length;
+                    if (contentLength) {
+                        const pct = (receivedLength / contentLength * 100).toFixed(0);
+                        const mb = (receivedLength / 1048576).toFixed(1);
+                        // Only log every 25% to avoid cluttering the screen
+                        if (pct % 25 === 0) logger(`DOWNLOADING: ${mb}MB (${pct}%)`);
+                    }
+                }
+
+                logger("3. UNPACKING: Parsing 8-Band Structure...");
+                const blob = new Blob(chunks);
+                const buffer = await blob.arrayBuffer();
+                activeGeo = await parseGeoraster(buffer);
                 
-                logger(`3. DATA: ${activeGeo.numberOfBands} Bands Online.`);
+                logger(`4. SUCCESS: ${activeGeo.numberOfBands} Bands Online.`);
                 
-                // Set up the Map Click INSIDE init so 'map' and 'activeGeo' are definitely ready
-                map.on('click', async (ev) => {
-                    if (!activeGeo) return;
-                    
+                // Set up Map Click
+                map.on('click', (ev) => {
                     const pt = L.Projection.SphericalMercator.project(ev.latlng);
                     const x = Math.floor((pt.x - activeGeo.xmin) / activeGeo.pixelWidth);
                     const y = Math.floor((activeGeo.ymax - pt.y) / activeGeo.pixelHeight);
-                    
                     try {
-                        // COG Pixel Probe: Asynchronously fetch just this 1x1 pixel area
-                        const pixelValues = await activeGeo.getValues({
-                            left: x, top: y, width: 1, height: 1, resampleMethod: 'nearest'
-                        });
-
-                        const v = pixelValues[0][0][0]; // Band 0: Vigor
-                        const w = pixelValues[3][0][0]; // Band 3: Water
-                        const t = pixelValues[7][0][0]; // Band 7: Thermal
-
+                        const vigor = activeGeo.values[0][y][x];
+                        const water = activeGeo.values[3][y][x];
+                        const temp  = activeGeo.values[7][y][x];
                         L.popup().setLatLng(ev.latlng).setContent(`
                             <div style="min-width:140px">
-                                <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${v ? v.toFixed(3) : "N/A"}</span></div>
-                                <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${w ? w.toFixed(2) : "N/A"}</span></div>
-                                <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${t ? t.toFixed(1) + "°C" : "N/A"}</span></div>
+                                <div class="stat-row"><span class="stat-label">Vigor</span><span class="stat-val">${vigor.toFixed(3)}</span></div>
+                                <div class="stat-row"><span class="stat-label">Water</span><span class="stat-val">${water.toFixed(2)}</span></div>
+                                <div class="stat-row"><span class="stat-label">Thermal</span><span class="stat-val">${temp.toFixed(1)}°C</span></div>
                             </div>
                         `).openOn(map);
-                    } catch(err) { console.error("Probe Error", err); }
+                    } catch(e) {}
                 });
 
                 render(0, document.getElementById('t0'));
-                logger("4. SUCCESS: System Alpha Fully Operational.");
 
             } catch (e) {
-                logger(`ERROR: ${e.message}`, "red");
-                console.error(e);
+                logger(`CRITICAL: ${e.message}`, "red");
             }
         }
 
@@ -100,31 +112,24 @@
             if (!activeGeo) return;
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
-            
             if (geoLayer) map.removeLayer(geoLayer);
-
-            logger(`STREAMING: Band ${band}...`);
-            
+            logger(`RENDERING: Band ${band}...`);
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeo,
                 opacity: 0.85,
                 resolution: 128,
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
-                    if (v === null || isNaN(v) || v === 0) return null;
-                    
-                    // Pierrevert Scientific Thresholds
+                    if (!v || v === 0) return null;
                     if (band === 0) return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
                     if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
                     if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
-                    return null;
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // Trigger start immediately
         init();
     </script>
 </body>
