@@ -3,41 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | System Alpha v3.3</title>
+    <title>Pierrevert | System Alpha v3.4</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        :root { --gold: #b8860b; --bg: #fdfdfd; --ui: rgba(255, 255, 255, 0.95); --text: #333; }
+        :root { --gold: #b8860b; --bg: #fdfdfd; --ui: rgba(255, 255, 255, 0.95); --text: #222; }
         body, html, #map { margin: 0; height: 100%; width: 100%; background: var(--bg); font-family: system-ui, sans-serif; overflow: hidden; }
         
         /* SPLASH SCREEN */
-        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; transition: 0.5s; }
-        #splash h1 { color: var(--gold); font-size: 24px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
-        #splash p { color: #666; font-size: 14px; max-width: 300px; line-height: 1.6; margin-bottom: 30px; }
-        #start-btn { background: var(--gold); color: white; border: none; padding: 15px 40px; border-radius: 30px; font-weight: bold; text-transform: uppercase; cursor: pointer; box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3); }
+        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; transition: 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        #splash h1 { color: var(--gold); font-size: 28px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 3px; font-weight: 900; }
+        #splash .value-prop { color: #444; font-size: 14px; max-width: 450px; line-height: 1.6; margin-bottom: 40px; text-align: left; background: #f9f9f9; padding: 20px; border-radius: 15px; border-left: 4px solid var(--gold); }
+        #start-btn { background: var(--gold); color: white; border: none; padding: 18px 50px; border-radius: 40px; font-weight: bold; text-transform: uppercase; cursor: pointer; box-shadow: 0 10px 20px rgba(184, 134, 11, 0.2); transition: 0.3s; }
 
-        /* UNIFIED LAYER SELECTOR */
-        .layer-menu { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 94%; max-width: 600px; background: var(--ui); padding: 10px; border-radius: 20px; border: 1px solid #ddd; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow-x: auto; display: flex; gap: 8px; white-space: nowrap; -webkit-overflow-scrolling: touch; }
-        .layer-btn { display: inline-block; padding: 10px 18px; border-radius: 15px; border: 1px solid #eee; background: #f8f8f8; color: #777; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
+        /* DYNAMIC INFO PANEL */
+        #info-panel { position: absolute; top: 20px; right: 20px; z-index: 2000; width: 280px; background: var(--ui); padding: 20px; border-radius: 20px; border: 1px solid #ddd; box-shadow: 0 4px 20px rgba(0,0,0,0.1); pointer-events: none; }
+        #info-panel h2 { font-size: 16px; margin: 0 0 8px 0; color: var(--gold); text-transform: uppercase; }
+        #info-panel p { font-size: 12px; margin: 0; color: #555; line-height: 1.5; }
+
+        /* DYNAMIC LEGEND */
+        #legend { margin-top: 15px; display: flex; flex-direction: column; gap: 5px; }
+        .legend-bar { height: 10px; border-radius: 5px; width: 100%; }
+        .legend-labels { display: flex; justify-content: space-between; font-size: 10px; color: #888; font-weight: bold; }
+
+        /* LAYER MENU */
+        .layer-menu { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 94%; max-width: 700px; background: var(--ui); padding: 12px; border-radius: 25px; border: 1px solid #ddd; box-shadow: 0 15px 35px rgba(0,0,0,0.15); overflow-x: auto; display: flex; gap: 10px; white-space: nowrap; scrollbar-width: none; }
+        .layer-btn { display: inline-block; padding: 12px 20px; border-radius: 18px; border: 1px solid #eee; background: #f4f4f4; color: #666; font-size: 10px; font-weight: 800; text-transform: uppercase; cursor: pointer; transition: 0.2s; }
         .layer-btn.active { background: var(--gold); color: white; border-color: var(--gold); }
 
-        /* LEGEND / POPUP */
-        .leaflet-popup-content-wrapper { background: var(--ui); color: var(--text); border-radius: 10px; }
+        @media (max-width: 600px) { #info-panel { width: calc(100% - 40px); left: 20px; top: auto; bottom: 120px; } }
     </style>
 </head>
 <body>
 
     <div id="splash">
-        <h1>AOC Pierrevert</h1>
-        <p><strong>System Alpha v3.3</strong><br>High-resolution terroir analysis (10m). Optimized for mobile hydro-geological monitoring.</p>
-        <button id="start-btn" onclick="dismissSplash()">Explore Terroir</button>
+        <h1>Alpha System</h1>
+        <div class="value-prop">
+            <strong>Terroir Intelligence:</strong> This tool synthesizes multi-spectral satellite data and topographic modeling to provide actionable insights for AOC Pierrevert:<br><br>
+            • 🛰️ <strong>Physiology:</strong> Monitor chlorophyll density, water stress, and heat accumulation.<br>
+            • ⛰️ <strong>Terrain:</strong> Analyze micro-topography, drainage paths, and solar exposure.<br>
+            • 💧 <strong>Strategy:</strong> Pinpoint precise zones for irrigation, soil amendment, and harvest zoning.
+        </div>
+        <button id="start-btn" onclick="dismissSplash()">Initialize Analysis</button>
+    </div>
+
+    <div id="info-panel">
+        <h2 id="layer-title">Select Layer</h2>
+        <p id="layer-desc">Choose a metric from the menu below to begin terroir analysis.</p>
+        <div id="legend">
+            <div id="legend-gradient" class="legend-bar"></div>
+            <div class="legend-labels">
+                <span id="label-low">Low</span>
+                <span id="label-high">High</span>
+            </div>
+        </div>
     </div>
 
     <div id="map"></div>
 
     <div class="layer-menu">
-        <button class="layer-btn active" onclick="setLayer('physiology', 0, this)">Vigor</button>
+        <button class="layer-btn active" onclick="setLayer('physiology', 0, this)">Vigor (NDRE)</button>
         <button class="layer-btn" onclick="setLayer('physiology', 1, this)">Moisture</button>
         <button class="layer-btn" onclick="setLayer('physiology', 2, this)">Thermal</button>
         <button class="layer-btn" onclick="setLayer('physiology', 3, this)">Clay</button>
@@ -54,7 +80,6 @@
 
     <script>
         let map, geoLayer, activeGeos = { physiology: null, terrain: null };
-
         const path = window.location.pathname;
         const dir = path.substring(0, path.lastIndexOf('/')) + '/';
         const absoluteBase = window.location.origin + dir;
@@ -62,70 +87,65 @@
         const config = {
             physiology: { 
                 url: absoluteBase + "data/physiology_v3.tif", 
-                scales: [
-                    [0.05, 0.25, ['#333', '#d4af37', '#27ae60']], // Vigor
-                    [-0.1, 0.3, ['#eee', '#3498db', '#000080']],  // Moisture
-                    [25, 45, ['#3498db', '#f39c12', '#e74c3c']],   // Thermal
-                    [1.0, 2.2, ['#fdf5e6', '#8b4513']]             // Clay
+                meta: [
+                    { title: "Vigor (NDRE)", desc: "Measures chlorophyll density and nitrogen content. High values indicate robust canopy health and photosynthesis.", range: [0.05, 0.25], colors: ['#333', '#d4af37', '#27ae60'] },
+                    { title: "Moisture Index", desc: "Detects plant water stress (NDMI). Critical for irrigation scheduling and identifying drought-prone plots.", range: [-0.1, 0.3], colors: ['#eee', '#3498db', '#000080'] },
+                    { title: "Surface Temp", desc: "Direct thermal monitoring in Celsius. Use to identify heat traps and optimize harvest timing for grape acidity.", range: [25, 45], colors: ['#3498db', '#f39c12', '#e74c3c'] },
+                    { title: "Clay Index", desc: "Estimated soil composition based on short-wave infrared. High values correlate with better water retention.", range: [1.0, 2.2], colors: ['#fdf5e6', '#8b4513'] }
                 ]
             },
             terrain: { 
                 url: absoluteBase + "data/terrain_v3.tif", 
-                scales: [
-                    [0, 0.2, ['#3d2b1f', '#d4af37', '#fff']],     // Soil
-                    [0, 25, ['#eee', '#ff4444']],                 // Slope
-                    [-5, 5, ['#2e8b57', '#eee', '#8b0000']],      // TPI
-                    [-1, 1, ['#2c3e50', '#f1c40f']]               // Aspect
+                meta: [
+                    { title: "Bare Soil (BSI)", desc: "Distinguishes between soil mineral content and organic cover. Useful for erosion risk assessment.", range: [0, 0.2], colors: ['#3d2b1f', '#d4af37', '#fff'] },
+                    { title: "Slope Grade", desc: "Steepness in degrees. Defines runoff speed and suitability for mechanized harvesting.", range: [0, 25], colors: ['#eee', '#ff4444'] },
+                    { title: "TPI (Relief)", desc: "Topographic Position Index. Positive values are ridges (drier/windiary); negative values are valleys (moisture/frost).", range: [-5, 5], colors: ['#2e8b57', '#eee', '#8b0000'] },
+                    { title: "Northness", desc: "Measures solar exposure. 1.0 is full North (cool/moist), -1.0 is full South (hot/dry).", range: [-1, 1], colors: ['#2c3e50', '#f1c40f'] }
                 ]
             }
         };
 
         function dismissSplash() {
             document.getElementById('splash').style.opacity = '0';
-            setTimeout(() => { document.getElementById('splash').style.display = 'none'; }, 500);
+            setTimeout(() => { 
+                document.getElementById('splash').style.display = 'none'; 
+                setLayer('physiology', 0, document.querySelector('.layer-btn'));
+            }, 600);
         }
 
-        async function setLayer(fileKey, bandIdx, btn) {
+        async function setLayer(fileKey, idx, btn) {
             document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
+            
+            const meta = config[fileKey].meta[idx];
+            document.getElementById('layer-title').innerText = meta.title;
+            document.getElementById('layer-desc').innerText = meta.desc;
+            document.getElementById('label-low').innerText = meta.range[0];
+            document.getElementById('label-high').innerText = meta.range[1];
+            document.getElementById('legend-gradient').style.background = `linear-gradient(to right, ${meta.colors.join(',')})`;
 
             if (geoLayer) map.removeLayer(geoLayer);
 
-            // Lazy Load the file if not already in memory
             if (!activeGeos[fileKey]) {
-                activeGeos[fileKey] = await parseGeoraster(config[fileKey].url, { 
-                    load_data: false, use_web_worker: true 
-                });
+                activeGeos[fileKey] = await parseGeoraster(config[fileKey].url, { load_data: false, use_web_worker: true });
             }
 
-            const settings = config[fileKey].scales[bandIdx];
-            
             geoLayer = new GeoRasterLayer({
                 georaster: activeGeos[fileKey],
                 opacity: 0.8,
-                resolution: 64, // SPEED FIX: Lower res for smooth mobile panning
+                resolution: 64, // OPTIMIZED FOR MOBILE
                 pixelValuesToColorFn: vals => {
-                    const v = vals[0] / 100; // 100x Decoder
+                    const v = vals[0] / 100;
                     if (!v || isNaN(v) || v === 0) return null;
-                    return chroma.scale(settings[2]).domain([settings[0], settings[1]])(v).hex();
+                    return chroma.scale(meta.colors).domain(meta.range)(v).hex();
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // Initialize with Satellite Base
-        map = L.map('map', { 
-            zoomControl: false, 
-            attributionControl: false,
-            preferCanvas: true // PERFORMANCE FIX: GPU Rendering
-        }).setView([43.811, 5.750], 13);
-
-        // LIGHT THEME / SATELLITE
-        const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
-        const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png').addTo(map);
-
-        // Initial Load
-        // Wait for user to click "Explore" to prevent background lag
+        map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([43.811, 5.750], 13);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png').addTo(map);
     </script>
 </body>
 </html>
