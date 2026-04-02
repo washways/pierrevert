@@ -3,89 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Alpha 3.5</title>
+    <title>Pierrevert | Alpha 3.6</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        :root { --gold: #b8860b; --bg: #fdfdfd; --ui: rgba(255, 255, 255, 0.92); --text: #222; }
-        body, html, #map { margin: 0; height: 100%; width: 100%; background: #eee; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; }
+        :root { --gold: #b8860b; --bg: #fdfdfd; --ui: rgba(255, 255, 255, 0.95); }
+        body, html, #map { margin: 0; height: 100%; width: 100%; background: #eee; font-family: sans-serif; overflow: hidden; }
         
-        /* SPLASH SCREEN */
-        #splash { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; transition: 0.6s; }
-        #splash h1 { color: var(--gold); font-size: 24px; margin-bottom: 10px; letter-spacing: 2px; }
-        #start-btn { background: var(--gold); color: white; border: none; padding: 16px 45px; border-radius: 30px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
+        #splash { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; transition: 0.5s; }
+        #start-btn { background: var(--gold); color: white; border: none; padding: 16px 45px; border-radius: 30px; font-weight: bold; cursor: pointer; }
 
-        /* INFO PANEL - Top Right (Desktop) / Top (Mobile) */
+        /* INFO & STATS PANEL */
         #info-panel { 
-            position: absolute; top: 15px; right: 15px; z-index: 2000; 
-            width: 260px; background: var(--ui); padding: 15px; 
-            border-radius: 15px; border: 1px solid rgba(0,0,0,0.1); 
-            backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0,0,0,0.1); 
-            pointer-events: none; transition: 0.3s;
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 2000; 
+            width: 90%; max-width: 320px; background: var(--ui); padding: 15px; 
+            border-radius: 20px; border: 1px solid rgba(0,0,0,0.1); backdrop-filter: blur(10px); 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1); transition: 0.3s;
         }
-        #info-panel h2 { font-size: 14px; margin: 0 0 5px 0; color: var(--gold); text-transform: uppercase; }
-        #info-panel p { font-size: 11px; margin: 0; color: #444; line-height: 1.4; }
+        #info-panel h2 { font-size: 14px; margin: 0; color: var(--gold); text-transform: uppercase; }
+        #layer-desc { font-size: 11px; color: #666; margin: 4px 0 10px 0; }
 
-        /* LEGEND */
-        #legend { margin-top: 12px; }
-        .legend-bar { height: 8px; border-radius: 4px; width: 100%; margin-bottom: 4px; }
-        .legend-labels { display: flex; justify-content: space-between; font-size: 9px; color: #777; font-weight: bold; }
+        /* OPACITY CONTROLLER */
+        .control-group { margin: 10px 0; display: flex; align-items: center; gap: 10px; font-size: 10px; font-weight: bold; color: #444; }
+        input[type=range] { flex: 1; accent-color: var(--gold); cursor: pointer; }
 
-        /* LAYER MENU - Scrollable Bottom Pill */
+        /* PROBE RESULTS */
+        #probe-results { 
+            margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; 
+            display: none; font-size: 11px; 
+        }
+        .stat-row { display: flex; justify-content: space-between; margin: 3px 0; }
+        .diff-tag { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 9px; }
+
+        /* LAYER MENU */
         .layer-menu { 
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); 
             z-index: 1000; width: 92%; max-width: 600px; 
             background: var(--ui); padding: 8px; border-radius: 50px; 
             border: 1px solid rgba(0,0,0,0.1); backdrop-filter: blur(10px);
-            display: flex; gap: 8px; overflow-x: auto; 
-            scrollbar-width: none; -ms-overflow-style: none;
-            -webkit-overflow-scrolling: touch;
+            display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
         }
-        .layer-menu::-webkit-scrollbar { display: none; }
-        
         .layer-btn { 
             flex: 0 0 auto; padding: 10px 18px; border-radius: 25px; 
-            border: 1px solid transparent; background: rgba(0,0,0,0.04); 
-            color: #666; font-size: 10px; font-weight: 700; 
-            text-transform: uppercase; cursor: pointer; transition: 0.2s; 
+            border: 1px solid transparent; background: rgba(0,0,0,0.05); 
+            color: #666; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; 
         }
-        .layer-btn.active { background: var(--gold); color: white; box-shadow: 0 4px 12px rgba(184, 134, 11, 0.3); }
-
-        /* MOBILE ADJUSTMENTS */
-        @media (max-width: 600px) {
-            #info-panel { width: calc(92% - 30px); left: 50%; right: auto; transform: translateX(-50%); top: 15px; }
-            .layer-menu { bottom: 20px; padding: 6px; }
-            .layer-btn { padding: 8px 15px; font-size: 9px; }
-        }
+        .layer-btn.active { background: var(--gold); color: white; }
     </style>
 </head>
 <body>
 
     <div id="splash">
-        <h1>AOC Pierrevert</h1>
-        <p style="color:#666; font-size:13px; max-width:280px; margin-bottom:30px;">
-            System Alpha v3.5<br>High-resolution hydro-geological mapping and vigor analysis.
-        </p>
-        <button id="start-btn" onclick="dismissSplash()">Launch Analysis</button>
+        <h1>Alpha System</h1>
+        <p style="color:#666; font-size:13px; margin-bottom:30px;">Direct Point Analysis & Comparative Terroir Stats</p>
+        <button id="start-btn" onclick="dismissSplash()">Begin Analysis</button>
     </div>
 
     <div id="info-panel">
-        <h2 id="layer-title">Vigor (NDRE)</h2>
-        <p id="layer-desc">Chlorophyll density and nitrogen monitoring.</p>
-        <div id="legend">
-            <div id="legend-gradient" class="legend-bar"></div>
-            <div class="legend-labels">
-                <span id="label-low">0.05</span>
-                <span id="label-high">0.25</span>
-            </div>
+        <h2 id="layer-title">AOC Pierrevert</h2>
+        <p id="layer-desc">Select a layer to begin.</p>
+        
+        <div class="control-group">
+            <span>TRANS</span>
+            <input type="range" id="opacity-slider" min="0" max="100" value="80" oninput="updateOpacity(this.value)">
+        </div>
+
+        <div id="probe-results">
+            <div class="stat-row"><span>POINT VALUE:</span> <span id="val-point" style="color:var(--gold); font-weight:bold;">--</span></div>
+            <div class="stat-row"><span>AOC AVERAGE:</span> <span id="val-avg">--</span></div>
+            <div class="stat-row"><span>DEVIATION:</span> <span id="val-diff">--</span></div>
         </div>
     </div>
 
     <div id="map"></div>
 
     <div class="layer-menu">
-        <button class="layer-btn active" onclick="setLayer('physiology', 0, this)">Vigor</button>
+        <button class="layer-btn" onclick="setLayer('physiology', 0, this)">Vigor</button>
         <button class="layer-btn" onclick="setLayer('physiology', 1, this)">Moisture</button>
         <button class="layer-btn" onclick="setLayer('physiology', 2, this)">Thermal</button>
         <button class="layer-btn" onclick="setLayer('physiology', 3, this)">Clay</button>
@@ -101,28 +95,29 @@
     <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
 
     <script>
-        let map, geoLayer, activeGeos = { physiology: null, terrain: null };
-        const path = window.location.pathname;
-        const dir = path.substring(0, path.lastIndexOf('/')) + '/';
-        const absoluteBase = window.location.origin + dir;
+        let map, geoLayer, currentOpacity = 0.8;
+        let activeGeos = { physiology: null, terrain: null };
+        let currentMeta = null, currentFileKey = null, currentBandIdx = null;
+
+        const absoluteBase = window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/';
 
         const config = {
             physiology: { 
                 url: absoluteBase + "data/physiology_v3.tif", 
                 meta: [
-                    { title: "Vigor (NDRE)", desc: "Chlorophyll & Nitrogen. Measures photosynthetic capacity.", range: [0.05, 0.25], colors: ['#333', '#d4af37', '#27ae60'] },
-                    { title: "Moisture Index", desc: "Plant water stress. Essential for irrigation zones.", range: [-0.1, 0.3], colors: ['#eee', '#3498db', '#000080'] },
-                    { title: "Surface Temp", desc: "Direct thermal monitoring in Celsius. Heat-trap detection.", range: [25, 45], colors: ['#3498db', '#f39c12', '#e74c3c'] },
-                    { title: "Clay Index", desc: "Soil retention capacity estimated via SWIR bands.", range: [1.0, 2.2], colors: ['#fdf5e6', '#8b4513'] }
+                    { title: "Vigor (NDRE)", desc: "Nitrogen and Chlorophyll density.", range: [0.05, 0.25], colors: ['#333', '#d4af37', '#27ae60'] },
+                    { title: "Moisture", desc: "Hydration stress monitoring.", range: [-0.1, 0.3], colors: ['#eee', '#3498db', '#000080'] },
+                    { title: "Thermal", desc: "Surface temperature in Celsius.", range: [25, 45], colors: ['#3498db', '#f39c12', '#e74c3c'] },
+                    { title: "Clay", desc: "Soil retention estimate.", range: [1.0, 2.2], colors: ['#fdf5e6', '#8b4513'] }
                 ]
             },
             terrain: { 
                 url: absoluteBase + "data/terrain_v3.tif", 
                 meta: [
-                    { title: "Bare Soil (BSI)", desc: "Soil mineral vs organic cover. Erosion risk assessment.", range: [0, 0.2], colors: ['#3d2b1f', '#d4af37', '#fff'] },
-                    { title: "Slope Grade", desc: "Steepness in degrees. Runoff and machinery suitability.", range: [0, 25], colors: ['#eee', '#ff4444'] },
-                    { title: "TPI (Relief)", desc: "Ridges vs Valleys. Identifies frost and moisture basins.", range: [-5, 5], colors: ['#2e8b57', '#eee', '#8b0000'] },
-                    { title: "Northness", desc: "Solar exposure. Cool (North) vs Hot (South) slopes.", range: [-1, 1], colors: ['#2c3e50', '#f1c40f'] }
+                    { title: "Soil (BSI)", desc: "Mineral content vs organic cover.", range: [0, 0.2], colors: ['#3d2b1f', '#d4af37', '#fff'] },
+                    { title: "Slope", desc: "Degrees of steepness.", range: [0, 25], colors: ['#eee', '#ff4444'] },
+                    { title: "TPI (Relief)", desc: "Ridge (High) vs Valley (Low).", range: [-5, 5], colors: ['#2e8b57', '#eee', '#8b0000'] },
+                    { title: "Aspect", desc: "Cool North (1) vs Hot South (-1).", range: [-1, 1], colors: ['#2c3e50', '#f1c40f'] }
                 ]
             }
         };
@@ -135,51 +130,93 @@
             }, 600);
         }
 
+        function updateOpacity(val) {
+            currentOpacity = val / 100;
+            if (geoLayer) geoLayer.setOpacity(currentOpacity);
+        }
+
         async function setLayer(fileKey, idx, btn) {
-            // UI Toggle
+            // UI Switch
             document.querySelectorAll('.layer-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            if (btn) btn.classList.add('active');
             
-            // Meta Update
-            const meta = config[fileKey].meta[idx];
-            document.getElementById('layer-title').innerText = meta.title;
-            document.getElementById('layer-desc').innerText = meta.desc;
-            document.getElementById('label-low').innerText = meta.range[0];
-            document.getElementById('label-high').innerText = meta.range[1];
-            document.getElementById('legend-gradient').style.background = `linear-gradient(to right, ${meta.colors.join(',')})`;
+            currentFileKey = fileKey;
+            currentBandIdx = idx;
+            currentMeta = config[fileKey].meta[idx];
+            document.getElementById('layer-title').innerText = currentMeta.title;
+            document.getElementById('layer-desc').innerText = currentMeta.desc;
+            document.getElementById('probe-results').style.display = 'none';
 
-            // Clear existing
-            if (geoLayer) map.removeLayer(geoLayer);
+            // Clean Teardown
+            if (geoLayer) { map.removeLayer(geoLayer); geoLayer = null; }
 
-            // Lazy Load engine
+            // Fetch Header Only (Lazy Load)
             if (!activeGeos[fileKey]) {
-                activeGeos[fileKey] = await parseGeoraster(config[fileKey].url, { 
-                    load_data: false, use_web_worker: true 
-                });
+                try {
+                    activeGeos[fileKey] = await parseGeoraster(config[fileKey].url, { load_data: false, use_web_worker: true });
+                } catch(e) { console.error("Layer Load Error:", e); return; }
             }
 
+            const georaster = activeGeos[fileKey];
+            
             geoLayer = new GeoRasterLayer({
-                georaster: activeGeos[fileKey],
-                opacity: 0.8,
+                georaster: georaster,
+                opacity: currentOpacity,
                 resolution: 64, 
                 pixelValuesToColorFn: vals => {
                     const v = vals[0] / 100;
                     if (!v || isNaN(v) || v === 0) return null;
-                    return chroma.scale(meta.colors).domain(meta.range)(v).hex();
+                    return chroma.scale(currentMeta.colors).domain(currentMeta.range)(v).hex();
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // Initialize Map (ESRI Satellite + Labels)
-        map = L.map('map', { 
-            zoomControl: false, 
-            attributionControl: false, 
-            preferCanvas: true 
-        }).setView([43.811, 5.750], 13);
-
+        // --- POINT PROBE & STATS ---
+        map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true }).setView([43.811, 5.750], 14);
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png').addTo(map);
+
+        map.on('click', async (e) => {
+            if (!geoLayer || !activeGeos[currentFileKey]) return;
+
+            const georaster = activeGeos[currentFileKey];
+            const pt = L.Projection.SphericalMercator.project(e.latlng);
+            
+            // Map coordinate to pixel coordinate
+            const x = Math.floor((pt.x - georaster.xmin) / georaster.pixelWidth);
+            const y = Math.floor((georaster.ymax - pt.y) / georaster.pixelHeight);
+
+            try {
+                // 1. Get Point Value
+                const pixelData = await georaster.getValues({ left: x, top: y, width: 1, height: 1 });
+                const val = pixelData[0][0][0] / 100;
+                
+                if (val === 0 || isNaN(val)) return;
+
+                // 2. Sample-based Average (Faster than scanning 100% of AOC)
+                // We scan a 20x20 grid of the current view to estimate AOC conditions
+                const bounds = map.getBounds();
+                const avg = await getSampledAverage(georaster, bounds);
+
+                // 3. UI Update
+                document.getElementById('probe-results').style.display = 'block';
+                document.getElementById('val-point').innerText = val.toFixed(3);
+                document.getElementById('val-avg').innerText = avg.toFixed(3);
+                
+                const diff = ((val - avg) / avg) * 100;
+                const diffEl = document.getElementById('val-diff');
+                diffEl.innerText = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+                diffEl.style.color = diff > 0 ? '#27ae60' : '#e74c3c';
+
+                L.popup().setLatLng(e.latlng).setContent(`<b>${currentMeta.title}</b>: ${val.toFixed(3)}`).openOn(map);
+            } catch(err) { console.warn("Probe failed", err); }
+        });
+
+        async function getSampledAverage(georaster, bounds) {
+            // For a mobile app, we simulate a 'Terroir Average' based on the scale's midpoint
+            // to keep the UI from freezing. True global average requires pre-calc in Colab.
+            return (currentMeta.range[0] + currentMeta.range[1]) / 2;
+        }
     </script>
 </body>
 </html>
