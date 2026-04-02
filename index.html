@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pierrevert | Alpha System</title>
+    <title>Pierrevert | System Alpha</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body, html, #map { margin: 0; height: 100%; width: 100%; background: #000; overflow: hidden; }
-        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 80px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 10px; padding: 12px; z-index: 9999; border: 1px solid #333; overflow-y: auto; border-radius: 8px; pointer-events: none; }
+        #log { position: absolute; top: 10px; left: 10px; right: 10px; height: 90px; background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace; font-size: 11px; padding: 12px; z-index: 9999; border: 1px solid #333; overflow-y: auto; border-radius: 8px; }
         .tabs-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; width: 92%; max-width: 500px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: rgba(15,15,15,0.95); padding: 8px; border-radius: 12px; border: 1px solid #444; }
-        .tab { text-align: center; color: #555; font-size: 9px; padding: 12px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; }
+        .tab { text-align: center; color: #555; font-size: 9px; padding: 12px 0; cursor: pointer; text-transform: uppercase; font-weight: 800; border-radius: 4px; }
         .tab.active { color: #d4af37; background: rgba(212, 175, 55, 0.1); border: 1px solid #d4af37; }
     </style>
 </head>
 <body>
 
-    <div id="log">PRE-FLIGHT: Checking Engine...</div>
+    <div id="log">BOOT: Awaiting JS Engine...</div>
     <div id="map"></div>
 
     <div class="tabs-container">
@@ -27,39 +27,49 @@
 
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
 
     <script>
+        // 1. GLOBAL ERROR CATCHER
+        window.onerror = function(msg, url, line) {
+            const l = document.getElementById('log');
+            l.innerHTML = `<span style="color:red">JS ERROR: ${msg} (Line ${line})</span><br>` + l.innerHTML;
+            return false;
+        };
+
         const logger = (m) => { 
             const l = document.getElementById('log');
-            if (l) l.innerHTML = `> ${m}<br>` + l.innerHTML;
-            console.log(m);
+            l.innerHTML = `> ${m}<br>` + l.innerHTML;
         };
 
         let map, geoLayer, activeGeo = null;
-        const cogUrl = "data/pierrevert_final.tif?v=" + Date.now();
+        const cogUrl = "data/pierrevert_final.tif";
 
         async function init() {
-            logger("CHECK 1: Libraries...");
-            if (typeof L === 'undefined') return logger("ERR: Leaflet Missing");
-            if (typeof chroma === 'undefined') return logger("ERR: Chroma Missing");
-            if (typeof parseGeoraster === 'undefined') return logger("ERR: Georaster Missing");
+            logger("CHECK 1: Validating Libraries...");
+            
+            // Check if libraries actually loaded
+            if (typeof L === 'undefined') throw new Error("Leaflet Load Failed");
+            if (typeof chroma === 'undefined') throw new Error("Chroma Load Failed");
+            if (typeof parseGeoraster === 'undefined') throw new Error("Georaster Load Failed");
 
-            logger("CHECK 2: Map Setup...");
+            logger("CHECK 2: Building Map Canvas...");
+            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            
+            logger("CHECK 3: Connecting to TIFF...");
             try {
-                map = L.map('map', { zoomControl: false, attributionControl: false }).setView([43.811, 5.750], 14);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-                
-                logger("CHECK 3: Fetching TIFF Metadata...");
-                // Lazy-load: We pass the URL, not a buffer
+                // We use the URL for Lazy Loading
                 activeGeo = await parseGeoraster(cogUrl);
                 
-                logger(`SUCCESS: 8 Bands Online (${activeGeo.width}x${activeGeo.height})`);
+                logger(`SUCCESS: 8 Bands Loaded (${activeGeo.width}x${activeGeo.height})`);
                 render(0, document.getElementById('t0'));
             } catch (e) {
-                logger("FATAL ERROR: " + e.message);
-                if (e.message.includes("404")) logger("Check if /data/pierrevert_final.tif exists on GitHub.");
+                logger("FATAL: " + e.message);
+                if (window.location.protocol === 'file:') {
+                    logger("⚠️ ERROR: You are running this as a local file. You MUST use GitHub Pages or a local server.");
+                }
             }
         }
 
@@ -78,17 +88,16 @@
                 pixelValuesToColorFn: vals => {
                     const v = vals[band];
                     if (!v || v === 0) return null;
-                    if (band === 0) return chroma.scale(['#444', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
+                    if (band === 0) return chroma.scale(['#333', '#d4af37', '#27ae60']).domain([0.05, 0.25])(v).hex();
                     if (band === 3) return chroma.scale(['#eee', '#3498db', '#000080']).domain([-0.1, 0.3])(v).hex();
                     if (band === 7) return chroma.scale(['#3498db', '#f39c12', '#e74c3c']).domain([25, 45])(v).hex();
                     if (band === 2) return chroma.scale(['#111', '#ff4444']).domain([0, 25])(v).hex();
-                    return null;
                 }
             });
             geoLayer.addTo(map);
         }
 
-        // Fire immediately
+        // AUTO-START
         init();
     </script>
 </body>
